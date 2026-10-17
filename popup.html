@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <title>YTM Floating Lyrics</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <div class="brand">Floating Lyrics</div>
+    <div class="now" id="now">Buka music.youtube.com</div>
+  </header>
+
+  <section>
+    <div class="label">Tab ini</div>
+    <div class="status" id="capStatus">—</div>
+    <button class="primary" id="capBtn" disabled>Izinkan AI mendengarkan tab ini</button>
+    <button class="ghost" id="regenBtn" disabled>Reset lirik &amp; timing AI lagu ini</button>
+  </section>
+
+  <section>
+    <div class="label">Tampilan</div>
+    <label class="row"><span>Tampilkan lirik mengambang</span><input type="checkbox" id="enabled"></label>
+    <label class="row"><span>Ambil timestamp dari LRCLIB</span><input type="checkbox" id="useLrclib"></label>
+    <label class="row"><span>Fallback AI kalau lirik tidak ada</span><input type="checkbox" id="aiEnabled"></label>
+  </section>
+
+  <section>
+    <div class="label">AI</div>
+    <div class="field">
+      <span>Provider</span>
+      <select id="provider">
+        <option value="openai">OpenAI</option>
+        <option value="groq">Groq</option>
+        <option value="gemini">Google Gemini</option>
+        <option value="local">Lokal (OpenAI-compatible)</option>
+        <option value="custom">Custom</option>
+      </select>
+      <div class="hint" id="providerHint"></div>
+    </div>
+    <div class="field"><span>Base URL</span><input id="baseUrl" spellcheck="false"></div>
+    <div class="field"><span>API key</span><input id="apiKey" type="password" spellcheck="false" placeholder="Kosongkan untuk server lokal"></div>
+    <div class="field"><span>Model</span><input id="model" spellcheck="false"></div>
+    <div class="field"><span>Bahasa (opsional)</span><input id="language" spellcheck="false" placeholder="auto · contoh: id, en, ja"></div>
+    <button class="primary" id="saveBtn">Simpan</button>
+    <div class="hint" id="saveMsg"></div>
+  </section>
+
+  <footer>
+    <span id="cacheInfo">Cache AI: –</span>
+    <button class="link" id="clearBtn">Hapus semua</button>
+  </footer>
+  <div class="tip">Shortcut: Alt+Shift+L untuk tampil/sembunyi</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "YTM Floating Lyrics",
+  "version": "1.0.0",
+  "description": "Lirik mengambang yang sinkron dengan YouTube Music. Kalau lirik tidak tersedia, AI mendengarkan lagu lalu menuliskan liriknya.",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "unlimitedStorage", "tabCapture", "offscreen", "activeTab"],
+  "host_permissions": [
+    "https://music.youtube.com/*",
+    "https://lrclib.net/*",
+    "https://api.openai.com/*",
+    "https://api.groq.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_title": "YTM Floating Lyrics",
+    "default_popup": "popup.html",
+    "default_icon": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" }
+  },
+  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "commands": {
+    "toggle-overlay": {
+      "suggested_key": { "default": "Alt+Shift+L" },
+      "description": "Tampilkan / sembunyikan lirik"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://music.youtube.com/*"],
+      "js": ["main-world.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://music.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
