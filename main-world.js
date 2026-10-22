@@ -95,6 +95,8 @@
     let duration = 0;
     try { duration = Number(player?.getDuration?.()) || 0; } catch {}
     if (!duration && video && Number.isFinite(video.duration)) duration = video.duration;
+    // Saat iklan, durasi milik iklan — jangan dipakai untuk estimasi lirik
+    if (player?.classList?.contains('ad-showing')) duration = 0;
     return {
       videoId: data.video_id || new URLSearchParams(location.search).get('v') || null,
       title: meta?.title || data.title || '',

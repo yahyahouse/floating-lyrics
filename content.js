@@ -1051,7 +1051,13 @@ button { all: unset; cursor: pointer; }
     const now = await mainWorld('now', {}, 3000);
     if (!now || now.error || !now.videoId) return;
     if (track && now.videoId === track.videoId) {
-      if (!track.duration && now.duration) track.duration = now.duration;
+      // Durasi awal bisa salah (player belum siap) → perbarui & hitung ulang timing estimasi
+      if (now.duration > 0 && Math.abs(now.duration - (track.duration || 0)) > 2) {
+        track.duration = now.duration;
+        if (lyrics?.estimated) {
+          show({ ...lyrics, lines: estimateLines(lyrics.lines.map((l) => l.text).join('\n'), now.duration) });
+        }
+      }
       return;
     }
     if (pendingVid !== now.videoId) {
