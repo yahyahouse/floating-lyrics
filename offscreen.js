@@ -201,12 +201,16 @@ function parseStamp(v) {
 async function geminiRequest(blob, s, cfg) {
   if (blob.size > 14 * 1024 * 1024) throw new Error('Audio terlalu besar untuk Gemini (maks ±14 MB).');
   const hint = [s.meta?.title, s.meta?.artist].filter(Boolean).join(' - ');
+  const rows = s.mode === 'sync' && Array.isArray(s.meta?.lyrics) ? s.meta.lyrics : [];
   const prompt = [
     'Transcribe the sung vocals in this audio recording of a song.',
+    rows.length
+      ? `The known lyrics are below, one line per row. When a sung line matches, copy its text exactly from these lyrics (repeated lines may be sung several times):\n${rows.join('\n')}\n`
+      : '',
     'Return one entry per sung line with "start" and "end" as timestamps in MM:SS.s format (minutes:seconds from the beginning of the audio, e.g. "01:07.5"), and "text".',
     'Only write what is actually audible. Skip instrumental parts. Do not add notes, labels or translations.',
     cfg.language ? `The vocals are mostly in language code "${cfg.language}".` : 'Keep the original language of the vocals.',
-    hint ? `Song info for spelling of names only: ${hint}.` : ''
+    hint && !rows.length ? `Song info for spelling of names only: ${hint}.` : ''
   ].filter(Boolean).join(' ');
 
   const base = (cfg.baseUrl || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/+$/, '');
@@ -249,6 +253,19 @@ async function geminiRequest(blob, s, cfg) {
   return { segments, text: '' };
 }
 
+// Whisper hanya memakai ±224 token prompt → untuk mode sync kirim awal lirik sebanyak muatnya
+function whisperPrompt(s) {
+  const hint = [s.meta?.title, s.meta?.artist].filter(Boolean).join(' - ');
+  const rows = s.mode === 'sync' && Array.isArray(s.meta?.lyrics) ? s.meta.lyrics : [];
+  if (!rows.length) return hint;
+  let text = '';
+  for (const r of rows) {
+    if (text.length + r.length + 1 > 600) break;
+    text += (text ? '\n' : '') + r;
+  }
+  return text || hint;
+}
+
 async function whisperRequest(blob, s, cfg) {
   const fd = new FormData();
   fd.append('file', blob, 'song.webm');
@@ -258,8 +275,8 @@ async function whisperRequest(blob, s, cfg) {
   fd.append('timestamp_granularities[]', 'word');
   fd.append('temperature', '0');
   if (cfg.language) fd.append('language', cfg.language);
-  const hint = [s.meta?.title, s.meta?.artist].filter(Boolean).join(' - ');
-  if (hint) fd.append('prompt', hint);
+  const prompt = whisperPrompt(s);
+  if (prompt) fd.append('prompt', prompt);
 
   const url = `${cfg.baseUrl.replace(/\/+$/, '')}/audio/transcriptions`;
   const headers = cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {};

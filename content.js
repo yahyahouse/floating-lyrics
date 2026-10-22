@@ -70,6 +70,7 @@
   const ICON_PIP = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="12" width="7" height="5" rx="1" fill="currentColor" stroke="none"/></svg>';
   const ICON_SYNC = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-3.9L4 9"/><path d="M4 4v5h5"/><path d="M4 13a8 8 0 0 0 14.9 3.9L20 15"/><path d="M20 20v-5h-5"/></svg>';
   const ICON_EDIT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+  const ICON_AI = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8Z"/></svg>';
   const ICON_MIN ='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 12h12"/></svg>';
 
   const CSS = `
@@ -88,7 +89,7 @@ button { all: unset; cursor: pointer; }
   font-family: "YouTube Sans", Roboto, system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
-.card.min { height: auto !important; min-height: 0; resize: none; }
+.card.min { height: auto !important; min-height: 0; min-width: 180px; resize: horizontal; }
 .card.min .view, .card.min .foot { display: none; }
 .head {
   display: flex; align-items: center; gap: 10px; flex: none;
@@ -116,8 +117,8 @@ button { all: unset; cursor: pointer; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .mini { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: #ff4e45; transition: width .3s linear; pointer-events: none; }
 .mini.paused { background: rgba(255, 255, 255, .4); }
-.actions [data-act="edit"] { display: none; }
-.actions [data-act="edit"].show { display: grid; }
+.actions [data-act="edit"], .actions [data-act="recreate"] { display: none; }
+.actions [data-act="edit"].show, .actions [data-act="recreate"].show { display: grid; }
 .editor { position: absolute; inset: 0; display: none; flex-direction: column; gap: 8px; padding: 12px 14px; background: #0e0e10; }
 .editor.show { display: flex; }
 .editor textarea {
@@ -163,6 +164,14 @@ button { all: unset; cursor: pointer; }
 .state .cta:hover { background: rgba(255, 255, 255, .85); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: #ff4e45; animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .3; } }
+.nowline { display: none; }
+.card.min .nowline {
+  display: block; padding: 0 16px 12px; font-size: var(--fs); line-height: 1.35; font-weight: 600;
+  overflow-wrap: anywhere; animation: fadein .25s ease;
+}
+.card.min .nowline:empty { display: none; }
+.nowline.next { color: rgba(255, 255, 255, .45); }
+@keyframes fadein { from { opacity: 0; transform: translateY(3px); } }
 .foot { flex: none; padding: 6px 16px 9px; font-size: 10.5px; color: rgba(255, 255, 255, .35); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .foot:empty { display: none; }
 .toast {
@@ -192,7 +201,8 @@ button { all: unset; cursor: pointer; }
       <button data-act="smaller" title="Perkecil teks">A-</button>
       <button data-act="bigger" title="Perbesar teks">A+</button>
       <button data-act="edit" title="Input / edit lirik sendiri">${ICON_EDIT}</button>
-      <button data-act="sync" title="Sesuaikan timing lirik dengan AI">${ICON_SYNC}</button>
+      <button data-act="sync" title="Cocokkan timing lirik dengan AI">${ICON_SYNC}</button>
+      <button data-act="recreate" title="Buat ulang lirik dengan AI">${ICON_AI}</button>
       <button data-act="pip" title="Mengambang di atas semua jendela">${ICON_PIP}</button>
       <button data-act="min" title="Ciutkan">${ICON_MIN}</button>
     </div>
@@ -202,14 +212,16 @@ button { all: unset; cursor: pointer; }
     <div class="state"></div>
     <div class="editor">
       <textarea spellcheck="false" placeholder="Tempel atau ketik lirik di sini, satu baris per baris lirik."></textarea>
-      <div class="hint">Teks biasa: timing diestimasi, lalu bisa dipaskan dengan tombol ⟳. Format LRC ([01:23.45] teks) langsung sinkron.</div>
+      <div class="hint">Teks biasa: timing diestimasi, lalu bisa dipaskan dengan tombol ⟳ atau "Sinkron tap". Format LRC ([01:23.45] teks) langsung sinkron.</div>
       <div class="btns">
         <button class="del">Hapus lirik manual</button>
+        <button class="sec" data-ed="tap" title="Putar dari awal, tekan spasi / klik setiap baris mulai">Sinkron tap</button>
         <button class="sec" data-ed="cancel">Batal</button>
         <button class="pri" data-ed="save">Simpan</button>
       </div>
     </div>
   </div>
+  <div class="nowline"></div>
   <div class="foot"></div>
   <div class="toast"></div>
   <div class="mini"></div>
@@ -222,6 +234,7 @@ button { all: unset; cursor: pointer; }
     const linesEl = q('.lines');
     const stateEl = q('.state');
     const footEl = q('.foot');
+    const nowEl = q('.nowline');
     const toastEl = q('.toast');
     let lineEls = [];
     let userScrollUntil = 0;
@@ -262,11 +275,24 @@ button { all: unset; cursor: pointer; }
 
     addEventListener('resize', () => { if (!pipWin) place(pos.x, pos.y); });
 
+    // Ukuran mode biasa (w, h) dan mode ciut (mw, lebar saja) disimpan terpisah
+    let size = { w: 0, h: 0, mw: 0 };
+    function applySize() {
+      const min = card.classList.contains('min');
+      const w = min ? size.mw || size.w : size.w;
+      card.style.width = w ? `${w}px` : '';
+      card.style.height = !min && size.h ? `${size.h}px` : '';
+    }
+
     // Simpan ukuran setelah di-resize
     new ResizeObserver(() => {
-      if (pipWin || card.classList.contains('min')) return;
+      if (pipWin) return;
+      const patch = card.classList.contains('min')
+        ? { mw: card.offsetWidth }
+        : { w: card.offsetWidth, h: card.offsetHeight };
+      Object.assign(size, patch);
       clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => cb.onSaveUi({ w: card.offsetWidth, h: card.offsetHeight }), 400);
+      saveTimer = setTimeout(() => cb.onSaveUi(patch), 400);
     }).observe(card);
 
     // Scroll manual menahan auto-scroll sebentar
@@ -287,9 +313,12 @@ button { all: unset; cursor: pointer; }
       else if (act === 'bigger') cb.onFont(1);
       else if (act === 'pip') togglePip();
       else if (act === 'edit') cb.onEdit();
+      else if (act === 'recreate') cb.onRecreate();
       else if (act === 'sync') { if (!b.classList.contains('busy')) cb.onSync(); }
       else if (act === 'min') {
         card.classList.toggle('min');
+        applySize();
+        place(pos.x, pos.y);
         cb.onSaveUi({ min: card.classList.contains('min') });
       }
     });
@@ -300,6 +329,7 @@ button { all: unset; cursor: pointer; }
     editor.querySelector('[data-ed="cancel"]').addEventListener('click', () => editor.classList.remove('show'));
     editor.querySelector('[data-ed="save"]').addEventListener('click', () => cb.onEditorSave(editor.querySelector('textarea').value));
     editor.querySelector('.del').addEventListener('click', () => cb.onEditorDelete());
+    editor.querySelector('[data-ed="tap"]').addEventListener('click', () => cb.onTapStart(editor.querySelector('textarea').value));
 
     async function togglePip() {
       if (pipWin) { pipWin.close(); return; }
@@ -341,6 +371,19 @@ button { all: unset; cursor: pointer; }
     }
 
     let current = -1;
+    // Mode ciut: tampilkan 1 baris yang sedang dinyanyikan (atau baris pertama, redup, sebelum mulai)
+    function setNowLine(i) {
+      const el = lineEls[i] || (i < 0 ? lineEls[0] : null);
+      const text = el?.textContent || '';
+      if (nowEl.textContent === text) return;
+      nowEl.textContent = text;
+      nowEl.classList.toggle('next', i < 0);
+      // restart animasi fade
+      nowEl.style.animation = 'none';
+      void nowEl.offsetWidth;
+      nowEl.style.animation = '';
+    }
+
     const api = {
       mount() { document.documentElement.append(host); },
       destroy() {
@@ -349,9 +392,9 @@ button { all: unset; cursor: pointer; }
       },
       isPip: () => !!pipWin,
       applyUi(u = {}) {
-        if (u.w) card.style.width = `${u.w}px`;
-        if (u.h) card.style.height = `${u.h}px`;
+        size = { w: u.w || 0, h: u.h || 0, mw: u.mw || 0 };
         card.classList.toggle('min', !!u.min);
+        applySize();
         requestAnimationFrame(() => place(u.x ?? innerWidth - card.offsetWidth - 24, u.y ?? 88));
       },
       setVisible(v) { if (!pipWin) host.style.display = v ? '' : 'none'; },
@@ -374,6 +417,7 @@ button { all: unset; cursor: pointer; }
         });
         linesEl.replaceChildren(frag);
         current = -1;
+        setNowLine(-1);
         scroller.scrollTop = 0;
         stateEl.classList.remove('show');
       },
@@ -381,6 +425,7 @@ button { all: unset; cursor: pointer; }
         linesEl.replaceChildren();
         lineEls = [];
         current = -1;
+        setNowLine(-1);
       },
       setActive(i) {
         for (let k = 0; k < lineEls.length; k++) {
@@ -388,6 +433,7 @@ button { all: unset; cursor: pointer; }
           lineEls[k].classList.toggle('past', k < i);
         }
         current = i;
+        setNowLine(i);
         if (i >= 0 && Date.now() > userScrollUntil) scrollTo(i, false);
       },
       scrollToActive(instant) { if (current >= 0) scrollTo(current, instant); },
@@ -433,6 +479,7 @@ button { all: unset; cursor: pointer; }
         setTimeout(() => ed.querySelector('textarea').focus(), 0);
       },
       closeEditor() { q('.editor').classList.remove('show'); },
+      setRecreateVisible(v) { q('[data-act="recreate"]').classList.toggle('show', !!v); },
       setSyncVisible(v) { q('[data-act="sync"]').classList.toggle('show', !!v); },
       // progress: angka 0..1 saat AI mendengarkan, null untuk selesai/batal
       setSyncBusy(progress, paused = false) {
@@ -440,7 +487,7 @@ button { all: unset; cursor: pointer; }
         const mini = q('.mini');
         const busy = progress !== null && progress !== undefined;
         btn.classList.toggle('busy', busy);
-        btn.title = busy ? 'AI sedang mendengarkan untuk menyesuaikan timing…' : 'Sesuaikan timing lirik dengan AI';
+        btn.title = busy ? 'AI sedang mendengarkan untuk mencocokkan timing…' : 'Cocokkan timing lirik dengan AI';
         if (busy) btn.classList.add('show');
         mini.classList.toggle('paused', !!paused);
         mini.style.width = busy ? `${Math.min(100, Math.max(0, progress * 100)).toFixed(1)}%` : '0';
@@ -568,6 +615,91 @@ button { all: unset; cursor: pointer; }
     if (track?.videoId === vid) loadTrack({ ...track });
   }
 
+  // ---------- Sinkron tap: user menekan spasi / klik tiap baris mulai ----------
+  const TAP_LAG = 0.1; // kompensasi reaksi tangan
+  let tap = null; // { videoId, rows, times }
+
+  function startTap(text) {
+    if (!track) return;
+    if (isRecording() || rec.state === 'transcribing') return ui.toast('Tunggu AI selesai dulu.');
+    const rows = splitRows(String(text || '').replace(/\[[^\]]*\]/g, ''));
+    if (rows.length < 2) return ui.toast('Isi liriknya dulu, satu baris per baris lirik.');
+    const v = getVideo();
+    if (!v) return;
+    ui.closeEditor();
+    editingVid = null;
+    tap = { videoId: track.videoId, rows, times: [] };
+    lyrics = null;
+    activeIndex = -1;
+    ui.setLines(rows.map((r) => ({ text: r })));
+    ui.setActive(-1);
+    ui.setSyncVisible(false);
+    ui.setBadge('Sinkron tap');
+    renderTap();
+    v.currentTime = 0;
+    lastTime = 0;
+    if (v.paused) v.play().catch(() => {});
+  }
+
+  function renderTap() {
+    ui.setFoot(`Spasi / klik = baris mulai · ⌫ undo · Esc batal — ${tap.times.length}/${tap.rows.length}`);
+  }
+
+  function tapNext() {
+    const v = getVideo();
+    if (!tap || !v) return;
+    const t = Math.max(0, v.currentTime - TAP_LAG);
+    // Habis seek mundur → buang tap yang ada di depan posisi sekarang
+    while (tap.times.length && tap.times[tap.times.length - 1] > t) tap.times.pop();
+    if (tap.times.length >= tap.rows.length) return;
+    tap.times.push(t);
+    ui.setActive(tap.times.length - 1);
+    renderTap();
+    if (tap.times.length === tap.rows.length) finishTap();
+  }
+
+  function undoTap() {
+    if (!tap?.times.length) return;
+    tap.times.pop();
+    ui.setActive(tap.times.length - 1);
+    renderTap();
+  }
+
+  function cancelTap(msg) {
+    if (!tap) return;
+    const vid = tap.videoId;
+    tap = null;
+    if (msg) ui.toast(msg);
+    if (track?.videoId === vid) loadTrack({ ...track });
+  }
+
+  async function finishTap() {
+    if (!tap) return;
+    const { videoId: vid, rows, times } = tap;
+    tap = null;
+    if (!times.length) return cancelTap();
+    // Baris yang belum ditap (lagu keburu habis) → taruh 2 detik setelah baris sebelumnya
+    const all = rows.map((_, i) => times[i] ?? times[times.length - 1] + (i - times.length + 1) * 2);
+    const lrc = rows.map((r, i) => `[${fmtTime(all[i])}] ${r}`).join('\n');
+    editingVid = vid;
+    await saveManual(lrc);
+  }
+
+  function onTapKey(e) {
+    if (!tap || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target?.closest?.('input, textarea, [contenteditable="true"]')) return;
+    let handled = true;
+    if (e.code === 'Space' || e.code === 'Enter') { if (!e.repeat) tapNext(); }
+    else if (e.code === 'Backspace') undoTap();
+    else if (e.code === 'Escape') cancelTap('Sinkron tap dibatalkan.');
+    else handled = false;
+    if (handled) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+  }
+  window.addEventListener('keydown', onTapKey, true);
+
   function show(l) {
     l = withSync(l);
     lyrics = l;
@@ -603,6 +735,8 @@ button { all: unset; cursor: pointer; }
 
   async function loadTrack(t) {
     if (orphaned()) return teardown();
+    if (tap && tap.videoId !== t.videoId) { tap = null; ui.toast('Sinkron tap dibatalkan karena lagu berganti.'); }
+    if (tap) return;
     const token = ++loadToken;
     track = t;
     lyrics = null;
@@ -618,7 +752,8 @@ button { all: unset; cursor: pointer; }
     ui.showState({ title: 'Mencari lirik…' });
 
     ui.setEditVisible(true);
-    const keys = [`ai:${t.videoId}`, `sync:${t.videoId}`, `user:${t.videoId}`];
+    ui.setRecreateVisible(true);
+    const keys = [`ai:${t.videoId}`, `sync:${t.videoId}`, `user:${t.videoId}`, `pref:${t.videoId}`];
     const store = await chrome.storage.local.get(keys);
     if (token !== loadToken) return;
     const cached = store[keys[0]];
@@ -626,6 +761,8 @@ button { all: unset; cursor: pointer; }
 
     // 0. Lirik yang diinput user selalu jadi prioritas
     if (store[keys[2]]?.text) return show(manualLyrics(store[keys[2]].text, t.duration));
+    // User pernah minta lirik dibuat ulang AI → pakai hasil AI walau YT Music punya lirik
+    if (store[keys[3]] === 'ai' && cached?.lines?.length) return show({ ...cached, base: 'AI' });
 
     // 1. Lirik bawaan YouTube Music
     // Error (ytcfg belum siap, timeout, HTTP) beda dengan "lirik tidak ada" → coba lagi dulu
@@ -666,6 +803,15 @@ button { all: unset; cursor: pointer; }
     // 3. Fallback AI
     if (rec.state === 'transcribing' && rec.mode === 'generate') {
       return ui.showState({ title: 'AI sedang menulis lirik…', sub: 'Lirik akan muncul otomatis setelah selesai.', live: true });
+    }
+    if (lrPlain && ytm?.error) return show({ base: 'LRCLIB', estimated: true, lines: estimateLines(lrPlain, t.duration) });
+    // Gagal ambil dari YT Music ≠ lirik tidak ada → jangan langsung bikin ulang pakai AI
+    if (ytm?.error) {
+      return ui.showState({
+        title: 'Gagal mengambil lirik YT Music',
+        sub: 'Coba lagi, atau tekan tombol ✦ untuk membuat lirik dengan AI.',
+        action: { label: 'Coba lagi', onClick: () => track && loadTrack({ ...track }) }
+      });
     }
     if (settings.aiEnabled) return startAIFlow();
     if (lrPlain) return show({ base: 'LRCLIB', estimated: true, lines: estimateLines(lrPlain, t.duration) });
@@ -809,6 +955,31 @@ button { all: unset; cursor: pointer; }
     startRecording('sync');
   }
 
+  // Buat ulang lirik dengan AI (dengar dari awal), walau lirik sudah ada
+  async function requestRecreate() {
+    if (!track) return;
+    if (isRecording() || rec.state === 'transcribing') return ui.toast('AI masih bekerja untuk lagu ini.');
+    const st = await bg({ type: 'capture:status' });
+    if (st?.configError) return ui.toast(`${st.configError} Atur lewat ikon extension.`);
+    if (!st?.capturing) return ui.toast('Klik ikon extension → "Izinkan AI mendengarkan tab ini" dulu.');
+    const v = getVideo();
+    if (!v || !track) return;
+    const vid = track.videoId;
+    await chrome.storage.local.set({ [`pref:${vid}`]: 'ai' });
+    await chrome.storage.local.remove(`ai:${vid}`);
+    if (track?.videoId !== vid) return;
+    lyrics = null;
+    activeIndex = -1;
+    ui.clearLines();
+    ui.setBadge('');
+    ui.setFoot('');
+    ui.setSyncVisible(false);
+    v.currentTime = 0;
+    lastTime = 0;
+    if (v.paused) v.play().catch(() => {});
+    startRecording('generate');
+  }
+
   async function applySync(videoId, words) {
     const job = syncJobs.get(videoId);
     syncJobs.delete(videoId);
@@ -900,7 +1071,13 @@ button { all: unset; cursor: pointer; }
       videoId: track.videoId,
       offset: v.currentTime,
       mode,
-      meta: { title: track.title, artist: track.artist, duration: track.duration }
+      meta: {
+        title: track.title,
+        artist: track.artist,
+        duration: track.duration,
+        // Mode sync: AI dikasih teks lirik supaya kata yang didengar mengarah ke lirik yang benar
+        lyrics: mode === 'sync' ? syncJobs.get(track.videoId)?.rows : undefined
+      }
     });
     if (r?.error) {
       rec = { state: 'need-permission' };
@@ -970,7 +1147,9 @@ button { all: unset; cursor: pointer; }
     if (!v || !track) return;
     const t = v.currentTime;
 
-    if (isRecording()) {
+    if (tap) {
+      if (track.duration && t >= track.duration - 1.2) finishTap();
+    } else if (isRecording()) {
       mark();
       const dt = t - lastTime;
       if (dt < -1 || dt > 2.5) {
@@ -1162,14 +1341,17 @@ button { all: unset; cursor: pointer; }
         chrome.storage.local.set({ settings: { ...settings, fontSize } });
       },
       onSeek: (i) => {
+        if (tap) return tapNext();
         const v = getVideo();
         const line = lyrics?.lines?.[i];
         if (v && line) v.currentTime = Math.max(0, line.t);
       },
       onSync: requestSync,
+      onRecreate: requestRecreate,
       onEdit: openEditor,
       onEditorSave: saveManual,
       onEditorDelete: deleteManual,
+      onTapStart: startTap,
       onPipClosed: () => ui.setVisible(settings.enabled)
     });
     ui.mount();
