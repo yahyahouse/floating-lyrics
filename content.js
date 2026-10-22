@@ -19,6 +19,11 @@
   let pendingSince = 0;
 
   const getVideo = () => document.querySelector('video');
+  // YT Music gapless: lagu berikutnya bisa lanjut di elemen <video> yang sama, jadi
+  // video.currentTime tidak mulai dari 0. timeBase = video.currentTime - posisi lagu.
+  let timeBase = 0;
+  const songTime = (v) => Math.max(0, v.currentTime - timeBase);
+  const seekSong = (v, t) => { v.currentTime = Math.max(0, t) + timeBase; };
 
   // Extension di-reload/update → script lama di tab ini yatim, semua API chrome.* melempar error
   const orphaned = () => { try { return !chrome.runtime?.id; } catch { return true; } };
@@ -636,7 +641,7 @@ button { all: unset; cursor: pointer; }
     ui.setSyncVisible(false);
     ui.setBadge('Sinkron tap');
     renderTap();
-    v.currentTime = 0;
+    seekSong(v, 0);
     lastTime = 0;
     if (v.paused) v.play().catch(() => {});
   }
@@ -648,7 +653,7 @@ button { all: unset; cursor: pointer; }
   function tapNext() {
     const v = getVideo();
     if (!tap || !v) return;
-    const t = Math.max(0, v.currentTime - TAP_LAG);
+    const t = Math.max(0, songTime(v) - TAP_LAG);
     // Habis seek mundur → buang tap yang ada di depan posisi sekarang
     while (tap.times.length && tap.times[tap.times.length - 1] > t) tap.times.pop();
     if (tap.times.length >= tap.rows.length) return;
@@ -726,7 +731,7 @@ button { all: unset; cursor: pointer; }
   function syncNow() {
     const v = getVideo();
     if (!v || !lyrics || !lyrics.lines.length) return;
-    const i = indexAt(v.currentTime + 0.2);
+    const i = indexAt(songTime(v) + 0.2);
     if (i !== activeIndex) {
       activeIndex = i;
       ui.setActive(i);
@@ -948,7 +953,7 @@ button { all: unset; cursor: pointer; }
     const v = getVideo();
     if (!v || !track || !lyrics) return;
     syncJobs.set(track.videoId, { rows: lyrics.lines.map((l) => l.text), base: lyrics.base });
-    v.currentTime = 0;
+    seekSong(v, 0);
     lastTime = 0;
     if (v.paused) v.play().catch(() => {});
     ui.toast('AI mendengarkan lagu dari awal untuk menyesuaikan timing.');
@@ -974,7 +979,7 @@ button { all: unset; cursor: pointer; }
     ui.setBadge('');
     ui.setFoot('');
     ui.setSyncVisible(false);
-    v.currentTime = 0;
+    seekSong(v, 0);
     lastTime = 0;
     if (v.paused) v.play().catch(() => {});
     startRecording('generate');
@@ -1009,7 +1014,7 @@ button { all: unset; cursor: pointer; }
   let timeline = [];
   function mark() {
     const v = getVideo();
-    if (v) timeline.push({ w: Date.now(), t: v.currentTime, p: rec.state === 'recording' });
+    if (v) timeline.push({ w: Date.now(), t: songTime(v), p: rec.state === 'recording' });
   }
 
   function restartAction() {
@@ -1018,7 +1023,7 @@ button { all: unset; cursor: pointer; }
       onClick: () => {
         const v = getVideo();
         if (!v) return;
-        v.currentTime = 0;
+        seekSong(v, 0);
         lastTime = 0;
         if (v.paused) v.play().catch(() => {});
         startAIFlow();
@@ -1047,7 +1052,7 @@ button { all: unset; cursor: pointer; }
     }
     const v = getVideo();
     if (!v) return;
-    if (v.currentTime > 3) {
+    if (songTime(v) > 3) {
       rec = { state: 'need-restart' };
       ui.showState({
         title: 'AI perlu mendengar dari awal',
@@ -1062,14 +1067,14 @@ button { all: unset; cursor: pointer; }
   async function startRecording(mode = 'generate') {
     const v = getVideo();
     if (!v || !track) return;
-    lastTime = v.currentTime;
+    lastTime = songTime(v);
     rec = { state: 'recording', videoId: track.videoId, mode };
     timeline = [];
     mark();
     const r = await bg({
       type: 'record:start',
       videoId: track.videoId,
-      offset: v.currentTime,
+      offset: songTime(v),
       mode,
       meta: {
         title: track.title,
@@ -1099,7 +1104,7 @@ button { all: unset; cursor: pointer; }
 
   function renderListening() {
     const v = getVideo();
-    const p = track?.duration ? (v?.currentTime || 0) / track.duration : 0;
+    const p = track?.duration ? (v ? songTime(v) : 0) / track.duration : 0;
     if (rec.mode === 'sync') {
       ui.setSyncBusy(p, rec.state === 'paused');
       return;
@@ -1145,7 +1150,7 @@ button { all: unset; cursor: pointer; }
   function onTimeUpdate() {
     const v = getVideo();
     if (!v || !track) return;
-    const t = v.currentTime;
+    const t = songTime(v);
 
     if (tap) {
       if (track.duration && t >= track.duration - 1.2) finishTap();
@@ -1229,6 +1234,10 @@ button { all: unset; cursor: pointer; }
     bindVideo();
     const now = await mainWorld('now', {}, 3000);
     if (!now || now.error || !now.videoId) return;
+    if (Number.isFinite(now.base) && Math.abs(now.base - timeBase) > 0.3) {
+      timeBase = now.base;
+      syncNow();
+    }
     if (track && now.videoId === track.videoId) {
       // Durasi awal bisa salah (player belum siap) → perbarui & hitung ulang timing estimasi
       if (now.duration > 0 && Math.abs(now.duration - (track.duration || 0)) > 2) {
@@ -1250,7 +1259,8 @@ button { all: unset; cursor: pointer; }
     if (track && now.title === track.title && age < 2500) return; // metadata belum ter-update
     pendingVid = null;
     leaveTrack();
-    lastTime = getVideo()?.currentTime || 0;
+    const v0 = getVideo();
+    lastTime = v0 ? songTime(v0) : 0;
     loadTrack({
       videoId: now.videoId,
       title: now.title,
@@ -1344,7 +1354,7 @@ button { all: unset; cursor: pointer; }
         if (tap) return tapNext();
         const v = getVideo();
         const line = lyrics?.lines?.[i];
-        if (v && line) v.currentTime = Math.max(0, line.t);
+        if (v && line) seekSong(v, line.t);
       },
       onSync: requestSync,
       onRecreate: requestRecreate,

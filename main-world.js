@@ -92,17 +92,31 @@
     try { data = player?.getVideoData?.() || {}; } catch {}
     const meta = navigator.mediaSession?.metadata;
     const video = document.querySelector('video');
+    const videoId = data.video_id || new URLSearchParams(location.search).get('v') || null;
     let duration = 0;
-    try { duration = Number(player?.getDuration?.()) || 0; } catch {}
+    // Gapless: getDuration() lagu berikutnya = bagian yang baru ter-buffer (29s, 49s, …) → pakai panjang asli lagu dulu
+    try {
+      const d = player?.getPlayerResponse?.()?.videoDetails;
+      if (d && d.videoId === videoId) duration = Number(d.lengthSeconds) || 0;
+    } catch {}
+    if (!duration) try { duration = Number(player?.getDuration?.()) || 0; } catch {}
     if (!duration && video && Number.isFinite(video.duration)) duration = video.duration;
     // Saat iklan, durasi milik iklan — jangan dipakai untuk estimasi lirik
-    if (player?.classList?.contains('ad-showing')) duration = 0;
+    const ad = !!player?.classList?.contains('ad-showing');
+    if (ad) duration = 0;
+    // Selisih jam <video> vs posisi lagu (gapless: lagu berikutnya tidak mulai dari 0)
+    let base;
+    try {
+      const ct = Number(player?.getCurrentTime?.());
+      if (!ad && video && Number.isFinite(ct)) base = video.currentTime - ct;
+    } catch {}
     return {
-      videoId: data.video_id || new URLSearchParams(location.search).get('v') || null,
+      videoId,
       title: meta?.title || data.title || '',
       artist: meta?.artist || data.author || '',
       album: meta?.album || '',
-      duration
+      duration,
+      base
     };
   }
 
