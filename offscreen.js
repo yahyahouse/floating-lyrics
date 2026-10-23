@@ -1,4 +1,4 @@
-// Menangkap audio tab, merekam 1 lagu penuh, lalu mengirim ke Whisper.
+// Captures tab audio, records one full song, then sends it to Whisper.
 let stream = null;
 let audioCtx = null;
 let capturedTabId = null;
@@ -84,7 +84,7 @@ async function startCapture(streamId, tabId) {
     audio: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId } },
     video: false
   });
-  // Teruskan audio ke speaker, karena tab capture membuat tab jadi senyap
+  // Route audio to the speakers, since tab capture mutes the tab
   audioCtx = new AudioContext();
   audioCtx.createMediaStreamSource(stream).connect(audioCtx.destination);
   capturedTabId = tabId;
@@ -130,9 +130,9 @@ function closeSpan() {
   if (last && last.to == null) last.to = Date.now();
 }
 
-// Detik di rekaman → detik di lagu. Rekaman dijeda saat lagu dijeda, jadi detik rekaman diubah dulu
-// ke jam dinding (lewat span aktif recorder), lalu ke posisi video (lewat catatan timeline dari tab).
-// Dengan begitu jeda pesan antar-context tidak menggeser timing.
+// Recording seconds → song seconds. Recording pauses when the song pauses, so recording seconds are first
+// mapped to wall-clock time (via the recorder's active spans), then to video position (via the tab's timeline log).
+// This way messaging delays between contexts don't shift the timing.
 function makeClock(s) {
   const spans = s.spans || [];
   const tl = (s.timeline || [])
@@ -186,7 +186,7 @@ function blobToBase64(blob) {
   });
 }
 
-// "01:07.5" / "1:02:03" / "67.5" → detik
+// "01:07.5" / "1:02:03" / "67.5" → seconds
 function parseStamp(v) {
   if (typeof v === 'number') return v;
   const str = String(v ?? '').trim();
@@ -196,10 +196,10 @@ function parseStamp(v) {
   return parts.reduce((acc, n) => acc * 60 + n, 0);
 }
 
-// Gemini: kirim audio langsung, minta transkripsi per baris lengkap dengan detiknya.
-// Hasilnya dibentuk mirip respons Whisper ({ segments }) supaya proses selanjutnya sama.
+// Gemini: send the audio directly, ask for a per-line transcription with timestamps.
+// The result is shaped like a Whisper response ({ segments }) so the rest of the pipeline is shared.
 async function geminiRequest(blob, s, cfg) {
-  if (blob.size > 14 * 1024 * 1024) throw new Error('Audio terlalu besar untuk Gemini (maks ±14 MB).');
+  if (blob.size > 14 * 1024 * 1024) throw new Error('Audio too large for Gemini (max ±14 MB).');
   const hint = [s.meta?.title, s.meta?.artist].filter(Boolean).join(' - ');
   const rows = s.mode === 'sync' && Array.isArray(s.meta?.lyrics) ? s.meta.lyrics : [];
   const prompt = [
@@ -243,7 +243,7 @@ async function geminiRequest(blob, s, cfg) {
   const data = await res.json();
   const raw = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
   let items = [];
-  try { items = JSON.parse(raw); } catch { throw new Error('Respons Gemini tidak bisa dibaca.'); }
+  try { items = JSON.parse(raw); } catch { throw new Error('Could not parse the Gemini response.'); }
   if (!Array.isArray(items)) items = [];
   const segments = items
     .map((x) => ({ start: parseStamp(x.start), end: parseStamp(x.end ?? x.start), text: String(x.text || '').trim() }))
@@ -253,7 +253,7 @@ async function geminiRequest(blob, s, cfg) {
   return { segments, text: '' };
 }
 
-// Whisper hanya memakai ±224 token prompt → untuk mode sync kirim awal lirik sebanyak muatnya
+// Whisper only uses ±224 prompt tokens → in sync mode send as much of the lyrics' opening as fits
 function whisperPrompt(s) {
   const hint = [s.meta?.title, s.meta?.artist].filter(Boolean).join(' - ');
   const rows = s.mode === 'sync' && Array.isArray(s.meta?.lyrics) ? s.meta.lyrics : [];
@@ -286,14 +286,14 @@ async function whisperRequest(blob, s, cfg) {
 }
 
 async function transcribe(blob, s, cfg) {
-  if (!blob.size) throw new Error('Rekaman kosong.');
-  if (blob.size > MAX_BYTES) throw new Error('Audio terlalu besar untuk dikirim ke AI (maks 24 MB).');
+  if (!blob.size) throw new Error('Recording is empty.');
+  if (blob.size > MAX_BYTES) throw new Error('Audio too large to send to the AI (max 24 MB).');
 
   const data = cfg.provider === 'gemini' ? await geminiRequest(blob, s, cfg) : await whisperRequest(blob, s, cfg);
   const segments = Array.isArray(data.segments) ? data.segments : [];
   const clock = makeClock(s);
 
-  // Gemini kadang menulis detik yang melar melewati panjang rekaman → skala ulang ke panjang rekaman
+  // Gemini sometimes writes stretched timestamps past the recording length → rescale to the recording length
   const recLen = (s.spans || []).reduce((acc, sp) => acc + ((sp.to ?? Date.now()) - sp.from) / 1000, 0);
   const maxEnd = Math.max(0, ...segments.map((seg) => Number(seg.end) || 0));
   if (cfg.provider === 'gemini' && recLen > 10 && maxEnd > recLen + 3) {
@@ -304,7 +304,7 @@ async function transcribe(blob, s, cfg) {
     }
   }
 
-  // Mode sync: kembalikan kata + waktunya, nanti dicocokkan dengan teks lirik di tab
+  // Sync mode: return words + times, matched against the lyric text in the tab
   if (s.mode === 'sync') {
     let words = Array.isArray(data.words) && data.words.length
       ? data.words.map((w) => ({ w: String(w.word || ''), s: clock(Number(w.start)), e: clock(Number(w.end)) }))
@@ -312,12 +312,12 @@ async function transcribe(blob, s, cfg) {
           .filter((seg) => (seg.no_speech_prob ?? 0) < 0.6)
           .map((seg) => ({ w: String(seg.text || ''), s: clock(Number(seg.start)), e: clock(Number(seg.end)) }));
     words = words.filter((w) => w.w.trim() && Number.isFinite(w.s) && Number.isFinite(w.e));
-    if (!words.length) throw new Error('AI tidak menemukan vokal di lagu ini.');
+    if (!words.length) throw new Error('AI found no vocals in this song.');
     return { words };
   }
 
   if (segments.length) {
-    // Awal segmen Whisper sering kecepatan (ikut jeda/intro); pakai kata pertama di segmen kalau ada
+    // Whisper segment starts are often early (include pauses/intro); use the segment's first word if available
     const words = Array.isArray(data.words) ? data.words : [];
     const startOf = (seg) => {
       const st = Number(seg.start);
@@ -331,7 +331,7 @@ async function transcribe(blob, s, cfg) {
     return { lines, estimated: false };
   }
 
-  // Server tidak mengembalikan timestamp → bagi rata sepanjang durasi
+  // Server returned no timestamps → spread evenly over the duration
   const text = String(data.text || '').trim();
   if (!text || JUNK.test(text)) return { lines: [] };
   const rows = text.split(/(?<=[.!?])\s+|\n+/).map((x) => x.trim()).filter(Boolean);

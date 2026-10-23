@@ -1,10 +1,10 @@
-// Overlay lirik + logika sinkronisasi & perekaman di music.youtube.com
+// Lyrics overlay + sync & recording logic on music.youtube.com
 (() => {
   'use strict';
   if (window.__ytmflLoaded) return;
   window.__ytmflLoaded = true;
 
-  const DEFAULTS = { enabled: true, useLrclib: true, aiEnabled: true, fontSize: 18 };
+  const DEFAULTS = { enabled: true, useLrclib: true, aiEnabled: true, fontSize: 18, transparency: 22, autoHide: true };
 
   let settings = { ...DEFAULTS };
   let ui = null;
@@ -19,13 +19,13 @@
   let pendingSince = 0;
 
   const getVideo = () => document.querySelector('video');
-  // YT Music gapless: lagu berikutnya bisa lanjut di elemen <video> yang sama, jadi
-  // video.currentTime tidak mulai dari 0. timeBase = video.currentTime - posisi lagu.
+  // YT Music gapless: the next song can continue on the same <video> element, so
+  // video.currentTime does not restart at 0. timeBase = video.currentTime - song position.
   let timeBase = 0;
   const songTime = (v) => Math.max(0, v.currentTime - timeBase);
   const seekSong = (v, t) => { v.currentTime = Math.max(0, t) + timeBase; };
 
-  // Extension di-reload/update → script lama di tab ini yatim, semua API chrome.* melempar error
+  // Extension reloaded/updated → the old script in this tab is orphaned, every chrome.* API throws
   const orphaned = () => { try { return !chrome.runtime?.id; } catch { return true; } };
   let timers = [];
   function teardown() {
@@ -50,7 +50,7 @@
     }
   }
 
-  // ---------- Bridge ke main-world.js ----------
+  // ---------- Bridge to main-world.js ----------
   let reqId = 0;
   const pending = new Map();
   window.addEventListener('message', (e) => {
@@ -84,16 +84,31 @@
 button { all: unset; cursor: pointer; }
 .card {
   --fs: 18px;
+  --bg-a: .78; /* background opacity, set from the transparency setting */
   position: relative;
   width: 340px; height: min(420px, 60vh); min-width: 240px; min-height: 150px;
   display: flex; flex-direction: column; overflow: hidden; resize: both;
-  background: rgba(14, 14, 16, .78); color: #fff;
-  border: 1px solid rgba(255, 255, 255, .08); border-radius: 16px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, .45);
-  backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%);
+  background: rgba(14, 14, 16, var(--bg-a)); color: #fff;
+  border: 1px solid rgba(255, 255, 255, calc(.08 * var(--bg-a) / .78)); border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, calc(.45 * var(--bg-a)));
+  backdrop-filter: blur(calc(26px * var(--bg-a))) saturate(140%); -webkit-backdrop-filter: blur(calc(26px * var(--bg-a))) saturate(140%);
   font-family: "YouTube Sans", Roboto, system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
+  transition: background-color .25s, border-color .25s, box-shadow .25s;
 }
+/* Auto-hide: without hover only the lyrics show; menu & background appear when the cursor enters */
+.card.autohide:not(:hover) {
+  background-color: transparent; border-color: transparent; box-shadow: none;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+.head, .foot { transition: opacity .25s; }
+.card.autohide:not(:hover) .head, .card.autohide:not(:hover) .foot { opacity: 0; }
+/* Thin / hidden background → add text shadow so lyrics stay readable over the video */
+.card.clear :is(.head, .line, .nowline, .state, .foot),
+.card.autohide:not(:hover) :is(.line, .nowline, .state) { text-shadow: 0 1px 3px rgba(0, 0, 0, .9), 0 0 12px rgba(0, 0, 0, .6); }
+.card.clear .line, .card.autohide:not(:hover) .line { color: rgba(255, 255, 255, .55); }
+.card.clear .line.past, .card.autohide:not(:hover) .line.past { color: rgba(255, 255, 255, .7); }
+.card.clear .line.active, .card.autohide:not(:hover) .line.active { color: #fff; }
 .card.min { height: auto !important; min-height: 0; min-width: 180px; resize: horizontal; }
 .card.min .view, .card.min .foot { display: none; }
 .head {
@@ -203,26 +218,26 @@ button { all: unset; cursor: pointer; }
       <div class="sub"><span class="artist"></span><span class="badge"></span></div>
     </div>
     <div class="actions">
-      <button data-act="smaller" title="Perkecil teks">A-</button>
-      <button data-act="bigger" title="Perbesar teks">A+</button>
-      <button data-act="edit" title="Input / edit lirik sendiri">${ICON_EDIT}</button>
-      <button data-act="sync" title="Cocokkan timing lirik dengan AI">${ICON_SYNC}</button>
-      <button data-act="recreate" title="Buat ulang lirik dengan AI">${ICON_AI}</button>
-      <button data-act="pip" title="Mengambang di atas semua jendela">${ICON_PIP}</button>
-      <button data-act="min" title="Ciutkan">${ICON_MIN}</button>
+      <button data-act="smaller" title="Smaller text">A-</button>
+      <button data-act="bigger" title="Bigger text">A+</button>
+      <button data-act="edit" title="Enter / edit lyrics yourself">${ICON_EDIT}</button>
+      <button data-act="sync" title="Match lyric timing with AI">${ICON_SYNC}</button>
+      <button data-act="recreate" title="Recreate lyrics with AI">${ICON_AI}</button>
+      <button data-act="pip" title="Float above all windows">${ICON_PIP}</button>
+      <button data-act="min" title="Minimize">${ICON_MIN}</button>
     </div>
   </div>
   <div class="view">
     <div class="scroller"><div class="lines"></div></div>
     <div class="state"></div>
     <div class="editor">
-      <textarea spellcheck="false" placeholder="Tempel atau ketik lirik di sini, satu baris per baris lirik."></textarea>
-      <div class="hint">Teks biasa: timing diestimasi, lalu bisa dipaskan dengan tombol ⟳ atau "Sinkron tap". Format LRC ([01:23.45] teks) langsung sinkron.</div>
+      <textarea spellcheck="false" placeholder="Paste or type lyrics here, one lyric line per row."></textarea>
+      <div class="hint">Plain text: timing is estimated, then can be fixed with the ⟳ button or "Tap sync". LRC format ([01:23.45] text) is synced right away.</div>
       <div class="btns">
-        <button class="del">Hapus lirik manual</button>
-        <button class="sec" data-ed="tap" title="Putar dari awal, tekan spasi / klik setiap baris mulai">Sinkron tap</button>
-        <button class="sec" data-ed="cancel">Batal</button>
-        <button class="pri" data-ed="save">Simpan</button>
+        <button class="del">Delete manual lyrics</button>
+        <button class="sec" data-ed="tap" title="Plays from the start; press space / click as each line begins">Tap sync</button>
+        <button class="sec" data-ed="cancel">Cancel</button>
+        <button class="pri" data-ed="save">Save</button>
       </div>
     </div>
   </div>
@@ -280,7 +295,7 @@ button { all: unset; cursor: pointer; }
 
     addEventListener('resize', () => { if (!pipWin) place(pos.x, pos.y); });
 
-    // Ukuran mode biasa (w, h) dan mode ciut (mw, lebar saja) disimpan terpisah
+    // Normal size (w, h) and minimized width (mw) are stored separately
     let size = { w: 0, h: 0, mw: 0 };
     function applySize() {
       const min = card.classList.contains('min');
@@ -289,7 +304,7 @@ button { all: unset; cursor: pointer; }
       card.style.height = !min && size.h ? `${size.h}px` : '';
     }
 
-    // Simpan ukuran setelah di-resize
+    // Save size after resizing
     new ResizeObserver(() => {
       if (pipWin) return;
       const patch = card.classList.contains('min')
@@ -300,7 +315,7 @@ button { all: unset; cursor: pointer; }
       saveTimer = setTimeout(() => cb.onSaveUi(patch), 400);
     }).observe(card);
 
-    // Scroll manual menahan auto-scroll sebentar
+    // Manual scrolling pauses auto-scroll for a moment
     const holdScroll = () => { userScrollUntil = Date.now() + 3000; };
     scroller.addEventListener('wheel', holdScroll, { passive: true });
     scroller.addEventListener('touchmove', holdScroll, { passive: true });
@@ -328,7 +343,7 @@ button { all: unset; cursor: pointer; }
       }
     });
 
-    // Editor lirik. Shortcut YouTube Music (spasi, j/k, dll.) jangan ikut terpicu saat mengetik.
+    // Lyrics editor. Don't let YouTube Music shortcuts (space, j/k, etc.) fire while typing.
     const editor = q('.editor');
     for (const ev of ['keydown', 'keyup', 'keypress']) editor.addEventListener(ev, (e) => e.stopPropagation());
     editor.querySelector('[data-ed="cancel"]').addEventListener('click', () => editor.classList.remove('show'));
@@ -339,7 +354,7 @@ button { all: unset; cursor: pointer; }
     async function togglePip() {
       if (pipWin) { pipWin.close(); return; }
       if (!('documentPictureInPicture' in window)) {
-        api.toast('Browser ini belum mendukung Picture-in-Picture dokumen.');
+        api.toast('This browser does not support Document Picture-in-Picture yet.');
         return;
       }
       try {
@@ -348,11 +363,11 @@ button { all: unset; cursor: pointer; }
           height: Math.max(360, card.offsetHeight)
         });
       } catch (err) {
-        api.toast('Gagal membuka jendela mengambang.');
+        api.toast('Failed to open the floating window.');
         pipWin = null;
         return;
       }
-      pipWin.document.title = 'Lirik';
+      pipWin.document.title = 'Lyrics';
       pipWin.document.body.style.cssText = 'margin:0;background:#0e0e10;overflow:hidden;';
       host.setAttribute('data-pip', '');
       host.style.cssText = 'position:static;display:block;width:100vw;height:100vh;';
@@ -376,14 +391,14 @@ button { all: unset; cursor: pointer; }
     }
 
     let current = -1;
-    // Mode ciut: tampilkan 1 baris yang sedang dinyanyikan (atau baris pertama, redup, sebelum mulai)
+    // Minimized mode: show the line being sung (or the first line, dimmed, before it starts)
     function setNowLine(i) {
       const el = lineEls[i] || (i < 0 ? lineEls[0] : null);
       const text = el?.textContent || '';
       if (nowEl.textContent === text) return;
       nowEl.textContent = text;
       nowEl.classList.toggle('next', i < 0);
-      // restart animasi fade
+      // restart the fade animation
       nowEl.style.animation = 'none';
       void nowEl.offsetWidth;
       nowEl.style.animation = '';
@@ -404,6 +419,13 @@ button { all: unset; cursor: pointer; }
       },
       setVisible(v) { if (!pipWin) host.style.display = v ? '' : 'none'; },
       setFont(px) { card.style.setProperty('--fs', `${px}px`); },
+      setAutoHide(on) { card.classList.toggle('autohide', !!on); },
+      // pct: 0 = solid background, 100 = fully see-through
+      setTransparency(pct) {
+        const a = 1 - Math.min(100, Math.max(0, Number(pct) || 0)) / 100;
+        card.style.setProperty('--bg-a', a.toFixed(2));
+        card.classList.toggle('clear', a < 0.5);
+      },
       setTrack(t) {
         q('.title').textContent = t?.title || 'Floating Lyrics';
         q('.artist').textContent = t?.artist || '';
@@ -486,13 +508,13 @@ button { all: unset; cursor: pointer; }
       closeEditor() { q('.editor').classList.remove('show'); },
       setRecreateVisible(v) { q('[data-act="recreate"]').classList.toggle('show', !!v); },
       setSyncVisible(v) { q('[data-act="sync"]').classList.toggle('show', !!v); },
-      // progress: angka 0..1 saat AI mendengarkan, null untuk selesai/batal
+      // progress: 0..1 while AI is listening, null when done/cancelled
       setSyncBusy(progress, paused = false) {
         const btn = q('[data-act="sync"]');
         const mini = q('.mini');
         const busy = progress !== null && progress !== undefined;
         btn.classList.toggle('busy', busy);
-        btn.title = busy ? 'AI sedang mendengarkan untuk mencocokkan timing…' : 'Cocokkan timing lirik dengan AI';
+        btn.title = busy ? 'AI is listening to match the timing…' : 'Match lyric timing with AI';
         if (busy) btn.classList.add('show');
         mini.classList.toggle('paused', !!paused);
         mini.style.width = busy ? `${Math.min(100, Math.max(0, progress * 100)).toFixed(1)}%` : '0';
@@ -511,10 +533,10 @@ button { all: unset; cursor: pointer; }
     return api;
   }
 
-  // ---------- Lirik ----------
+  // ---------- Lyrics ----------
   // lyrics: { base: 'YT Music'|'LRCLIB'|'AI', lines, estimated, aiSynced, footer }
-  let syncCache = null; // { times, n, base } — hanya timestamp, teks lirik tidak disimpan
-  const syncJobs = new Map(); // videoId -> { rows, base } yang sedang disesuaikan AI
+  let syncCache = null; // { times, n, base } — timestamps only, lyric text is not stored
+  const syncJobs = new Map(); // videoId -> { rows, base } being synced by AI
 
   function splitRows(text) {
     return String(text || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
@@ -542,11 +564,11 @@ button { all: unset; cursor: pointer; }
 
   function badgeFor(l) {
     if (l.aiSynced) return `${l.base} · AI sync`;
-    if (l.estimated) return `${l.base} · estimasi`;
+    if (l.estimated) return `${l.base} · estimated`;
     return l.base;
   }
 
-  // ---------- Lirik manual (input user) ----------
+  // ---------- Manual lyrics (user input) ----------
   let editingVid = null;
 
   function parseLrcText(text) {
@@ -577,7 +599,7 @@ button { all: unset; cursor: pointer; }
     editingVid = track.videoId;
     let text = '';
     if (lyrics?.lines?.length) {
-      // Kalau timing sudah pas, isi dalam format LRC supaya timing-nya ikut tersimpan
+      // If timing is already right, fill in LRC format so the timing is saved too
       text = lyrics.estimated
         ? lyrics.lines.map((l) => l.text).join('\n')
         : lyrics.lines.map((l) => `[${fmtTime(l.t)}] ${l.text}`).join('\n');
@@ -596,17 +618,17 @@ button { all: unset; cursor: pointer; }
     const vid = editingVid || track?.videoId;
     if (!vid) return;
     text = String(text || '').trim();
-    if (!text) { ui.toast('Lirik masih kosong.'); return; }
+    if (!text) { ui.toast('Lyrics are empty.'); return; }
     await chrome.storage.local.set({ [`user:${vid}`]: { text, updatedAt: Date.now() } });
     await dropManualSync(vid);
     ui.closeEditor();
     editingVid = null;
-    if (track?.videoId !== vid) { ui.toast('Lirik disimpan untuk lagu sebelumnya.'); return; }
+    if (track?.videoId !== vid) { ui.toast('Lyrics saved for the previous song.'); return; }
     if (rec.videoId === vid && isRecording()) cancelRecording();
     rec = { state: 'idle' };
     const l = manualLyrics(text, track.duration);
     show(l);
-    ui.toast(l.estimated ? 'Lirik disimpan. Tekan ⟳ supaya timing-nya pas.' : 'Lirik disimpan.');
+    ui.toast(l.estimated ? 'Lyrics saved. Press ⟳ to fix the timing.' : 'Lyrics saved.');
   }
 
   async function deleteManual() {
@@ -616,19 +638,19 @@ button { all: unset; cursor: pointer; }
     await dropManualSync(vid);
     ui.closeEditor();
     editingVid = null;
-    ui.toast('Lirik manual dihapus.');
+    ui.toast('Manual lyrics deleted.');
     if (track?.videoId === vid) loadTrack({ ...track });
   }
 
-  // ---------- Sinkron tap: user menekan spasi / klik tiap baris mulai ----------
-  const TAP_LAG = 0.1; // kompensasi reaksi tangan
+  // ---------- Tap sync: user presses space / clicks as each line begins ----------
+  const TAP_LAG = 0.1; // compensates for reaction time
   let tap = null; // { videoId, rows, times }
 
   function startTap(text) {
     if (!track) return;
-    if (isRecording() || rec.state === 'transcribing') return ui.toast('Tunggu AI selesai dulu.');
+    if (isRecording() || rec.state === 'transcribing') return ui.toast('Wait for the AI to finish first.');
     const rows = splitRows(String(text || '').replace(/\[[^\]]*\]/g, ''));
-    if (rows.length < 2) return ui.toast('Isi liriknya dulu, satu baris per baris lirik.');
+    if (rows.length < 2) return ui.toast('Enter the lyrics first, one lyric line per row.');
     const v = getVideo();
     if (!v) return;
     ui.closeEditor();
@@ -639,7 +661,7 @@ button { all: unset; cursor: pointer; }
     ui.setLines(rows.map((r) => ({ text: r })));
     ui.setActive(-1);
     ui.setSyncVisible(false);
-    ui.setBadge('Sinkron tap');
+    ui.setBadge('Tap sync');
     renderTap();
     seekSong(v, 0);
     lastTime = 0;
@@ -647,14 +669,14 @@ button { all: unset; cursor: pointer; }
   }
 
   function renderTap() {
-    ui.setFoot(`Spasi / klik = baris mulai · ⌫ undo · Esc batal — ${tap.times.length}/${tap.rows.length}`);
+    ui.setFoot(`Space / click = line starts · ⌫ undo · Esc cancel — ${tap.times.length}/${tap.rows.length}`);
   }
 
   function tapNext() {
     const v = getVideo();
     if (!tap || !v) return;
     const t = Math.max(0, songTime(v) - TAP_LAG);
-    // Habis seek mundur → buang tap yang ada di depan posisi sekarang
+    // After seeking back → drop taps ahead of the current position
     while (tap.times.length && tap.times[tap.times.length - 1] > t) tap.times.pop();
     if (tap.times.length >= tap.rows.length) return;
     tap.times.push(t);
@@ -683,7 +705,7 @@ button { all: unset; cursor: pointer; }
     const { videoId: vid, rows, times } = tap;
     tap = null;
     if (!times.length) return cancelTap();
-    // Baris yang belum ditap (lagu keburu habis) → taruh 2 detik setelah baris sebelumnya
+    // Untapped lines (song ended first) → place 2 seconds after the previous line
     const all = rows.map((_, i) => times[i] ?? times[times.length - 1] + (i - times.length + 1) * 2);
     const lrc = rows.map((r, i) => `[${fmtTime(all[i])}] ${r}`).join('\n');
     editingVid = vid;
@@ -696,7 +718,7 @@ button { all: unset; cursor: pointer; }
     let handled = true;
     if (e.code === 'Space' || e.code === 'Enter') { if (!e.repeat) tapNext(); }
     else if (e.code === 'Backspace') undoTap();
-    else if (e.code === 'Escape') cancelTap('Sinkron tap dibatalkan.');
+    else if (e.code === 'Escape') cancelTap('Tap sync cancelled.');
     else handled = false;
     if (handled) {
       e.preventDefault();
@@ -740,13 +762,13 @@ button { all: unset; cursor: pointer; }
 
   async function loadTrack(t) {
     if (orphaned()) return teardown();
-    if (tap && tap.videoId !== t.videoId) { tap = null; ui.toast('Sinkron tap dibatalkan karena lagu berganti.'); }
+    if (tap && tap.videoId !== t.videoId) { tap = null; ui.toast('Tap sync cancelled because the song changed.'); }
     if (tap) return;
     const token = ++loadToken;
     track = t;
     lyrics = null;
     activeIndex = -1;
-    // Transkripsi lagu ini yang masih berjalan jangan dilupakan (repeat, regenerate, ganti setting)
+    // Keep track of a transcription still running for this song (repeat, regenerate, settings change)
     if (!(rec.state === 'transcribing' && rec.videoId === t.videoId)) rec = { state: 'idle' };
     ui.clearLines();
     ui.setTrack(t);
@@ -754,7 +776,7 @@ button { all: unset; cursor: pointer; }
     ui.setFoot('');
     ui.setSyncVisible(false);
     ui.setSyncBusy(null);
-    ui.showState({ title: 'Mencari lirik…' });
+    ui.showState({ title: 'Searching for lyrics…' });
 
     ui.setEditVisible(true);
     ui.setRecreateVisible(true);
@@ -764,13 +786,13 @@ button { all: unset; cursor: pointer; }
     const cached = store[keys[0]];
     syncCache = store[keys[1]] || null;
 
-    // 0. Lirik yang diinput user selalu jadi prioritas
+    // 0. User-entered lyrics always win
     if (store[keys[2]]?.text) return show(manualLyrics(store[keys[2]].text, t.duration));
-    // User pernah minta lirik dibuat ulang AI → pakai hasil AI walau YT Music punya lirik
+    // User asked AI to recreate the lyrics → use the AI result even if YT Music has lyrics
     if (store[keys[3]] === 'ai' && cached?.lines?.length) return show({ ...cached, base: 'AI' });
 
-    // 1. Lirik bawaan YouTube Music
-    // Error (ytcfg belum siap, timeout, HTTP) beda dengan "lirik tidak ada" → coba lagi dulu
+    // 1. YouTube Music's own lyrics
+    // An error (ytcfg not ready, timeout, HTTP) differs from "no lyrics" → retry first
     let ytm = await mainWorld('lyrics', { videoId: t.videoId });
     for (let i = 0; ytm?.error && i < 2; i++) {
       await new Promise((r) => setTimeout(r, 1500));
@@ -784,7 +806,7 @@ button { all: unset; cursor: pointer; }
 
     if (ytm?.found) {
       const est = { base: 'YT Music', estimated: true, lines: estimateLines(ytm.text, t.duration), footer: ytm.footer };
-      // Sudah pernah disesuaikan AI → langsung pakai
+      // Already synced by AI → use it right away
       if (syncCache?.base === 'YT Music' && syncCache.n === est.lines.length) return show(est);
       if (settings.useLrclib) {
         const lr = await bg({ type: 'lrclib', track: t });
@@ -794,7 +816,7 @@ button { all: unset; cursor: pointer; }
       return show(est);
     }
 
-    // 2. Lirik AI yang sudah pernah dibuat
+    // 2. Previously generated AI lyrics
     if (cached?.lines?.length) return show({ ...cached, base: 'AI' });
 
     let lrPlain = null;
@@ -807,23 +829,23 @@ button { all: unset; cursor: pointer; }
 
     // 3. Fallback AI
     if (rec.state === 'transcribing' && rec.mode === 'generate') {
-      return ui.showState({ title: 'AI sedang menulis lirik…', sub: 'Lirik akan muncul otomatis setelah selesai.', live: true });
+      return ui.showState({ title: 'AI is writing the lyrics…', sub: 'Lyrics will appear automatically when done.', live: true });
     }
     if (lrPlain && ytm?.error) return show({ base: 'LRCLIB', estimated: true, lines: estimateLines(lrPlain, t.duration) });
-    // Gagal ambil dari YT Music ≠ lirik tidak ada → jangan langsung bikin ulang pakai AI
+    // Failing to fetch from YT Music ≠ no lyrics → don't regenerate with AI right away
     if (ytm?.error) {
       return ui.showState({
-        title: 'Gagal mengambil lirik YT Music',
-        sub: 'Coba lagi, atau tekan tombol ✦ untuk membuat lirik dengan AI.',
-        action: { label: 'Coba lagi', onClick: () => track && loadTrack({ ...track }) }
+        title: 'Failed to fetch YT Music lyrics',
+        sub: 'Try again, or press ✦ to create lyrics with AI.',
+        action: { label: 'Try again', onClick: () => track && loadTrack({ ...track }) }
       });
     }
     if (settings.aiEnabled) return startAIFlow();
     if (lrPlain) return show({ base: 'LRCLIB', estimated: true, lines: estimateLines(lrPlain, t.duration) });
-    ui.showState({ title: 'Lirik tidak tersedia', sub: 'Aktifkan fallback AI di pengaturan extension untuk membuat liriknya.' });
+    ui.showState({ title: 'Lyrics not available', sub: 'Enable the AI fallback in the extension settings to create lyrics.' });
   }
 
-  // ---------- Penyelarasan teks lirik dengan hasil dengar AI ----------
+  // ---------- Aligning lyric text with what the AI heard ----------
   const CJK = /([぀-ヿ㐀-鿿豈-﫿가-힯])/g;
 
   function tokenize(s) {
@@ -856,7 +878,7 @@ button { all: unset; cursor: pointer; }
     return 1 - prev[lb] / mx;
   }
 
-  // rows: teks per baris, words: [{ w, s, e }] dari Whisper → array detik mulai tiap baris
+  // rows: text per line, words: [{ w, s, e }] from Whisper → start second of each line
   function alignLines(rows, words) {
     const lt = [];
     rows.forEach((r, line) => tokenize(r).forEach((tok, k) => lt.push({ tok, line, k })));
@@ -870,10 +892,10 @@ button { all: unset; cursor: pointer; }
     const m = wt.length;
     if (!n || !m || n * m > 4e6) return null;
 
-    // DP alignment (mirip LCS, tapi pencocokan kata boleh fuzzy)
+    // DP alignment (LCS-like, but word matching may be fuzzy)
     const W = m + 1;
     const score = new Float32Array((n + 1) * W);
-    const dir = new Uint8Array((n + 1) * W); // 0 = cocok, 1 = lewati kata lirik, 2 = lewati kata AI
+    const dir = new Uint8Array((n + 1) * W); // 0 = match, 1 = skip lyric word, 2 = skip AI word
     for (let i = 1; i <= n; i++) {
       for (let j = 1; j <= m; j++) {
         let best = score[(i - 1) * W + j];
@@ -900,7 +922,7 @@ button { all: unset; cursor: pointer; }
       else j--;
     }
 
-    // Waktu tiap baris = kata pertama yang cocok, dikoreksi posisinya di baris
+    // Line time = first matched word, corrected for its position in the line
     const L = rows.length;
     const times = new Array(L).fill(null);
     const total = new Array(L).fill(0);
@@ -916,7 +938,7 @@ button { all: unset; cursor: pointer; }
       if (times[k] != null && hit[k] < Math.min(2, total[k]) && hit[k] / Math.max(1, total[k]) < 0.34) times[k] = null;
     }
 
-    // Buang yang tidak urut
+    // Drop out-of-order times
     let last = -Infinity;
     for (let k = 0; k < L; k++) {
       if (times[k] == null) continue;
@@ -948,25 +970,25 @@ button { all: unset; cursor: pointer; }
   async function requestSync() {
     if (!track || !lyrics || isRecording()) return;
     const st = await bg({ type: 'capture:status' });
-    if (st?.configError) return ui.toast(`${st.configError} Atur lewat ikon extension.`);
-    if (!st?.capturing) return ui.toast('Klik ikon extension → "Izinkan AI mendengarkan tab ini" dulu.');
+    if (st?.configError) return ui.toast(`${st.configError} Configure it via the extension icon.`);
+    if (!st?.capturing) return ui.toast('Click the extension icon → "Allow AI to listen to this tab" first.');
     const v = getVideo();
     if (!v || !track || !lyrics) return;
     syncJobs.set(track.videoId, { rows: lyrics.lines.map((l) => l.text), base: lyrics.base });
     seekSong(v, 0);
     lastTime = 0;
     if (v.paused) v.play().catch(() => {});
-    ui.toast('AI mendengarkan lagu dari awal untuk menyesuaikan timing.');
+    ui.toast('AI is listening from the start to match the timing.');
     startRecording('sync');
   }
 
-  // Buat ulang lirik dengan AI (dengar dari awal), walau lirik sudah ada
+  // Recreate lyrics with AI (listen from the start), even if lyrics exist
   async function requestRecreate() {
     if (!track) return;
-    if (isRecording() || rec.state === 'transcribing') return ui.toast('AI masih bekerja untuk lagu ini.');
+    if (isRecording() || rec.state === 'transcribing') return ui.toast('AI is still working on this song.');
     const st = await bg({ type: 'capture:status' });
-    if (st?.configError) return ui.toast(`${st.configError} Atur lewat ikon extension.`);
-    if (!st?.capturing) return ui.toast('Klik ikon extension → "Izinkan AI mendengarkan tab ini" dulu.');
+    if (st?.configError) return ui.toast(`${st.configError} Configure it via the extension icon.`);
+    if (!st?.capturing) return ui.toast('Click the extension icon → "Allow AI to listen to this tab" first.');
     const v = getVideo();
     if (!v || !track) return;
     const vid = track.videoId;
@@ -991,7 +1013,7 @@ button { all: unset; cursor: pointer; }
     if (!job) return;
     const times = alignLines(job.rows, words);
     if (!times) {
-      ui.toast('AI belum bisa mencocokkan lirik dengan lagu ini.');
+      ui.toast('AI could not match the lyrics to this song.');
       return;
     }
     const entry = { times, n: job.rows.length, base: job.base, createdAt: Date.now() };
@@ -1001,16 +1023,16 @@ button { all: unset; cursor: pointer; }
       if (lyrics && lyrics.base === job.base && lyrics.lines.length === job.rows.length) {
         show({ ...lyrics, aiSynced: false });
       }
-      ui.toast('Timing lirik sudah disesuaikan.');
+      ui.toast('Lyric timing synced.');
     } else {
-      ui.toast('Timing lirik lagu sebelumnya sudah disesuaikan.');
+      ui.toast('Lyric timing for the previous song synced.');
     }
   }
 
-  // ---------- AI: dengarkan 1 lagu penuh lalu transkripsi ----------
+  // ---------- AI: listen to one full song, then transcribe ----------
   const isRecording = () => rec.state === 'recording' || rec.state === 'paused';
 
-  // Catatan { jam dinding, posisi video } selama merekam, supaya detik hasil AI bisa dipetakan tepat ke detik lagu
+  // { wall clock, video position } log while recording, so AI seconds map exactly to song seconds
   let timeline = [];
   function mark() {
     const v = getVideo();
@@ -1019,7 +1041,7 @@ button { all: unset; cursor: pointer; }
 
   function restartAction() {
     return {
-      label: 'Putar dari awal',
+      label: 'Play from start',
       onClick: () => {
         const v = getVideo();
         if (!v) return;
@@ -1039,14 +1061,14 @@ button { all: unset; cursor: pointer; }
 
     if (st?.configError) {
       rec = { state: 'need-config' };
-      ui.showState({ title: 'Lirik belum tersedia', sub: `${st.configError} Buka ikon extension untuk mengatur AI.` });
+      ui.showState({ title: 'Lyrics not available yet', sub: `${st.configError} Open the extension icon to set up AI.` });
       return;
     }
     if (!st?.capturing) {
       rec = { state: 'need-permission' };
       ui.showState({
-        title: 'Lirik belum tersedia',
-        sub: 'Klik ikon extension lalu pilih "Izinkan AI mendengarkan tab ini" supaya AI bisa membuat liriknya.'
+        title: 'Lyrics not available yet',
+        sub: 'Click the extension icon and choose "Allow AI to listen to this tab" so AI can create the lyrics.'
       });
       return;
     }
@@ -1055,8 +1077,8 @@ button { all: unset; cursor: pointer; }
     if (songTime(v) > 3) {
       rec = { state: 'need-restart' };
       ui.showState({
-        title: 'AI perlu mendengar dari awal',
-        sub: 'Supaya lirik yang dibuat lengkap dan timestamp-nya pas.',
+        title: 'AI needs to listen from the start',
+        sub: 'So the lyrics are complete and the timestamps are right.',
         action: restartAction()
       });
       return;
@@ -1080,7 +1102,7 @@ button { all: unset; cursor: pointer; }
         title: track.title,
         artist: track.artist,
         duration: track.duration,
-        // Mode sync: AI dikasih teks lirik supaya kata yang didengar mengarah ke lirik yang benar
+        // Sync mode: give the AI the lyric text so what it hears leans toward the right words
         lyrics: mode === 'sync' ? syncJobs.get(track.videoId)?.rows : undefined
       }
     });
@@ -1088,9 +1110,9 @@ button { all: unset; cursor: pointer; }
       rec = { state: 'need-permission' };
       if (mode === 'sync') {
         ui.setSyncBusy(null);
-        ui.toast('AI tidak bisa mendengarkan. Izinkan ulang lewat ikon extension.');
+        ui.toast('AI cannot listen. Allow it again via the extension icon.');
       } else {
-        ui.showState({ title: 'AI tidak bisa mendengarkan', sub: 'Izinkan ulang lewat ikon extension, lalu putar lagu dari awal.' });
+        ui.showState({ title: 'AI cannot listen', sub: 'Allow it again via the extension icon, then play the song from the start.' });
       }
       return;
     }
@@ -1110,8 +1132,8 @@ button { all: unset; cursor: pointer; }
       return;
     }
     ui.showState({
-      title: rec.state === 'paused' ? 'AI menunggu (lagu dijeda)' : 'AI sedang mendengarkan',
-      sub: 'Lirik dibuat setelah lagu selesai. Jangan skip atau seek sampai lagu habis.',
+      title: rec.state === 'paused' ? 'AI waiting (song paused)' : 'AI is listening',
+      sub: 'Lyrics are created after the song ends. Don\'t skip or seek until it finishes.',
       progress: p,
       live: rec.state === 'recording'
     });
@@ -1134,19 +1156,19 @@ button { all: unset; cursor: pointer; }
     bg({ type: 'record:stop', videoId: vid, timeline });
     if (mode === 'sync') {
       ui.setSyncBusy(null);
-      ui.toast('AI sedang menyesuaikan timing lirik…');
+      ui.toast('AI is syncing the lyric timing…');
       return;
     }
     if (track?.videoId === vid) {
       ui.showState({
-        title: 'AI sedang menulis lirik…',
-        sub: 'Lirik akan otomatis muncul saat lagu ini diputar lagi.',
+        title: 'AI is writing the lyrics…',
+        sub: 'Lyrics will appear automatically next time this song plays.',
         live: true
       });
     }
   }
 
-  // ---------- Event video ----------
+  // ---------- Video events ----------
   function onTimeUpdate() {
     const v = getVideo();
     if (!v || !track) return;
@@ -1165,13 +1187,13 @@ button { all: unset; cursor: pointer; }
           if (job) syncJobs.set(track.videoId, job);
           startRecording(mode);
         } else if (mode === 'sync') {
-          ui.toast('Penyesuaian dibatalkan karena lagu di-seek.');
+          ui.toast('Sync cancelled because the song was seeked.');
           ui.setSyncVisible(true);
         } else {
           rec = { state: 'need-restart' };
           ui.showState({
-            title: 'AI berhenti mendengarkan',
-            sub: 'Lagu di-seek atau di-skip di tengah, jadi rekamannya tidak utuh.',
+            title: 'AI stopped listening',
+            sub: 'The song was seeked or skipped midway, so the recording is incomplete.',
             action: restartAction()
           });
         }
@@ -1183,7 +1205,7 @@ button { all: unset; cursor: pointer; }
         ui.setProgress(track.duration ? t / track.duration : 0);
       }
     } else if (!lyrics && rec.state !== 'transcribing' && track.duration && lastTime > track.duration - 3 && t < 2) {
-      // Lagu diulang (repeat one) → cek lagi, mungkin lirik AI sudah jadi
+      // Song repeated (repeat one) → check again, AI lyrics may be ready
       loadTrack({ ...track });
     }
     lastTime = t;
@@ -1221,7 +1243,7 @@ button { all: unset; cursor: pointer; }
     v.addEventListener('playing', onPlaying);
   }
 
-  // ---------- Deteksi ganti lagu ----------
+  // ---------- Song change detection ----------
   function leaveTrack() {
     if (isRecording()) {
       if (track?.duration && lastTime >= track.duration - 4) finishRecording();
@@ -1239,7 +1261,7 @@ button { all: unset; cursor: pointer; }
       syncNow();
     }
     if (track && now.videoId === track.videoId) {
-      // Durasi awal bisa salah (player belum siap) → perbarui & hitung ulang timing estimasi
+      // Initial duration can be wrong (player not ready) → update & re-estimate timing
       if (now.duration > 0 && Math.abs(now.duration - (track.duration || 0)) > 2) {
         track.duration = now.duration;
         if (lyrics?.estimated) {
@@ -1256,7 +1278,7 @@ button { all: unset; cursor: pointer; }
     const age = Date.now() - pendingSince;
     if (age < 800) return;
     if (!(now.title && now.duration > 0) && age < 6000) return;
-    if (track && now.title === track.title && age < 2500) return; // metadata belum ter-update
+    if (track && now.title === track.title && age < 2500) return; // metadata not updated yet
     pendingVid = null;
     leaveTrack();
     const v0 = getVideo();
@@ -1270,7 +1292,7 @@ button { all: unset; cursor: pointer; }
     });
   }
 
-  // ---------- Pesan dari background ----------
+  // ---------- Messages from background ----------
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (!msg?.type) return;
     switch (msg.type) {
@@ -1286,10 +1308,10 @@ button { all: unset; cursor: pointer; }
           if (rec.mode === 'sync') {
             syncJobs.delete(rec.videoId);
             ui.setSyncBusy(null);
-            ui.toast('Izin mendengarkan tab berakhir, penyesuaian dibatalkan.');
+            ui.toast('Tab listening permission ended, sync cancelled.');
           }
           rec = { state: 'need-permission' };
-          if (!lyrics) ui.showState({ title: 'AI berhenti mendengarkan', sub: 'Izin mendengarkan tab sudah berakhir. Izinkan lagi lewat ikon extension.' });
+          if (!lyrics) ui.showState({ title: 'AI stopped listening', sub: 'Tab listening permission has ended. Allow it again via the extension icon.' });
         }
         return;
       case 'ai:done':
@@ -1297,7 +1319,7 @@ button { all: unset; cursor: pointer; }
         if (track?.videoId === msg.videoId) {
           if (!lyrics) show({ ...msg.lyrics, base: 'AI' });
         } else {
-          ui.toast(`Lirik AI siap: ${msg.lyrics?.title || 'lagu sebelumnya'}`);
+          ui.toast(`AI lyrics ready: ${msg.lyrics?.title || 'previous song'}`);
         }
         return;
       case 'ai:sync-done':
@@ -1308,11 +1330,11 @@ button { all: unset; cursor: pointer; }
         if (rec.state === 'transcribing' && rec.videoId === msg.videoId) rec = { state: 'idle' };
         if (msg.mode === 'sync') {
           syncJobs.delete(msg.videoId);
-          ui.toast(`Penyesuaian timing gagal: ${msg.error || 'unknown error'}`);
+          ui.toast(`Timing sync failed: ${msg.error || 'unknown error'}`);
         } else if (track?.videoId === msg.videoId && !lyrics) {
-          ui.showState({ title: 'Gagal membuat lirik AI', sub: msg.error || '', action: restartAction() });
+          ui.showState({ title: 'Failed to create AI lyrics', sub: msg.error || '', action: restartAction() });
         } else {
-          ui.toast(`Lirik AI gagal: ${msg.error || 'unknown error'}`);
+          ui.toast(`AI lyrics failed: ${msg.error || 'unknown error'}`);
         }
         return;
       case 'ai:regenerate':
@@ -1324,7 +1346,7 @@ button { all: unset; cursor: pointer; }
     }
   });
 
-  // ---------- Pengaturan ----------
+  // ---------- Settings ----------
   async function saveUi(patch) {
     const { ui: cur } = await chrome.storage.local.get('ui');
     await chrome.storage.local.set({ ui: { ...(cur || {}), ...patch } });
@@ -1336,6 +1358,8 @@ button { all: unset; cursor: pointer; }
     settings = { ...DEFAULTS, ...(changes.settings.newValue || {}) };
     ui.setVisible(settings.enabled);
     ui.setFont(settings.fontSize);
+    ui.setTransparency(settings.transparency);
+    ui.setAutoHide(settings.autoHide);
     if (track && !lyrics && settings.aiEnabled !== prev.aiEnabled && rec.state !== 'recording' && rec.state !== 'paused') {
       loadTrack({ ...track });
     }
@@ -1367,8 +1391,10 @@ button { all: unset; cursor: pointer; }
     ui.mount();
     ui.applyUi(st.ui || {});
     ui.setFont(settings.fontSize);
+    ui.setTransparency(settings.transparency);
+    ui.setAutoHide(settings.autoHide);
     ui.setVisible(settings.enabled);
-    ui.showState({ title: 'Putar lagu untuk menampilkan lirik' });
+    ui.showState({ title: 'Play a song to show lyrics' });
     timers = [setInterval(poll, 500), setInterval(syncNow, 150)];
   }
 

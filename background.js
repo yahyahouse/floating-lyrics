@@ -1,9 +1,11 @@
-// Service worker: koordinasi capture audio, LRCLIB, cache lirik AI.
+// Service worker: coordinates audio capture, LRCLIB and the AI lyrics cache.
 const DEFAULT_SETTINGS = {
   enabled: true,
   useLrclib: true,
   aiEnabled: true,
   fontSize: 18,
+  transparency: 22,
+  autoHide: true,
   provider: 'openai',
   baseUrl: 'https://api.openai.com/v1',
   apiKey: '',
@@ -22,14 +24,14 @@ async function getSettings() {
 }
 
 function configError(s) {
-  if (!s.baseUrl) return 'Base URL AI belum diisi.';
-  if (!s.model) return 'Model AI belum diisi.';
+  if (!s.baseUrl) return 'AI base URL is not set.';
+  if (!s.model) return 'AI model is not set.';
   const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(`${s.baseUrl}/`);
-  if (!s.apiKey && (!isLocal || s.provider === 'gemini')) return 'API key AI belum diisi.';
+  if (!s.apiKey && (!isLocal || s.provider === 'gemini')) return 'AI API key is not set.';
   return null;
 }
 
-// ---------- Offscreen document (tempat audio tab ditangkap & direkam) ----------
+// ---------- Offscreen document (where tab audio is captured & recorded) ----------
 async function hasOffscreen() {
   const ctx = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
   return ctx.length > 0;
@@ -42,7 +44,7 @@ async function ensureOffscreen() {
     creating = chrome.offscreen.createDocument({
       url: 'offscreen.html',
       reasons: ['USER_MEDIA'],
-      justification: 'Mendengarkan audio tab YouTube Music untuk membuat lirik dengan AI'
+      justification: 'Listening to YouTube Music tab audio to create lyrics with AI'
     }).finally(() => { creating = null; });
   }
   await creating;
@@ -110,7 +112,7 @@ async function lrclib(t) {
   return { found: false };
 }
 
-// ---------- Router pesan ----------
+// ---------- Message router ----------
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.target === 'offscreen') return;
   handle(msg, sender).then(sendResponse, (e) => sendResponse({ error: String(e?.message || e) }));
@@ -179,19 +181,19 @@ async function handle(msg, sender) {
       return toOffscreen({ type, videoId: msg.videoId, offset: msg.offset, meta: msg.meta, mode: msg.mode });
     }
 
-    // Hasil transkripsi dari offscreen
+    // Transcription result from offscreen
     case 'ai:result': {
       if (!fromOffscreen(sender)) return {};
       if (msg.mode === 'sync') {
         if (msg.error || !msg.words?.length) {
-          notifyTab(msg.tabId, { type: 'ai:error', mode: 'sync', videoId: msg.videoId, error: msg.error || 'AI tidak menemukan vokal di lagu ini.' });
+          notifyTab(msg.tabId, { type: 'ai:error', mode: 'sync', videoId: msg.videoId, error: msg.error || 'AI found no vocals in this song.' });
           return { ok: false };
         }
         notifyTab(msg.tabId, { type: 'ai:sync-done', videoId: msg.videoId, words: msg.words });
         return { ok: true };
       }
       if (msg.error || !msg.lines?.length) {
-        notifyTab(msg.tabId, { type: 'ai:error', videoId: msg.videoId, error: msg.error || 'AI tidak menemukan vokal di lagu ini.' });
+        notifyTab(msg.tabId, { type: 'ai:error', videoId: msg.videoId, error: msg.error || 'AI found no vocals in this song.' });
         return { ok: false };
       }
       const lyrics = {
@@ -235,7 +237,7 @@ async function handle(msg, sender) {
   }
 }
 
-// Lepas capture kalau tab ditutup / pindah dari YouTube Music
+// Release capture when the tab closes / leaves YouTube Music
 async function releaseIf(tabId) {
   const st = await captureStatus();
   if (st.capturing && st.tabId === tabId) await toOffscreen({ type: 'release' }).catch(() => {});

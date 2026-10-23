@@ -1,5 +1,5 @@
-// Berjalan di "MAIN world" halaman YouTube Music, supaya bisa membaca ytcfg & player.
-// Komunikasi dengan content.js lewat window.postMessage.
+// Runs in the YouTube Music page's "MAIN world" so it can read ytcfg & the player.
+// Talks to content.js via window.postMessage.
 (() => {
   'use strict';
   if (window.__ytmflMain) return;
@@ -11,7 +11,7 @@
 
   async function innertube(endpoint, body) {
     const context = cfg('INNERTUBE_CONTEXT');
-    if (!context) throw new Error('ytcfg belum siap');
+    if (!context) throw new Error('ytcfg not ready');
     const clientName = String(cfg('INNERTUBE_CONTEXT_CLIENT_NAME') || 67);
     const clientVersion = String(cfg('INNERTUBE_CLIENT_VERSION') || context.client?.clientVersion || '');
     const key = cfg('INNERTUBE_API_KEY');
@@ -30,7 +30,7 @@
     return res.json();
   }
 
-  // Cari baris lirik ber-timestamp: { lyricLine, cueRange: { startTimeMilliseconds } }
+  // Find timestamped lyric lines: { lyricLine, cueRange: { startTimeMilliseconds } }
   function extractTimed(data) {
     const timed = [];
     walk(data, (n) => {
@@ -51,7 +51,7 @@
 
   const runsText = (r) => (r?.runs || []).map((x) => x.text).join('') || r?.simpleText || '';
 
-  // Ambil lirik bawaan YouTube Music (tab "Lyrics").
+  // Fetch YouTube Music's own lyrics (the "Lyrics" tab).
   async function getLyrics(videoId) {
     const next = await innertube('next', { videoId, isAudioOnly: true });
 
@@ -65,7 +65,7 @@
     const data = await innertube('browse', { browseId });
     const timed = extractTimed(data);
 
-    // Lirik statis + keterangan sumber
+    // Static lyrics + source note
     let plain = null;
     let footer = '';
     walk(data, (n) => {
@@ -85,7 +85,7 @@
     return { found: false };
   }
 
-  // Info lagu yang sedang diputar.
+  // Info about the song currently playing.
   function nowPlaying() {
     const player = document.getElementById('movie_player');
     let data = {};
@@ -94,17 +94,17 @@
     const video = document.querySelector('video');
     const videoId = data.video_id || new URLSearchParams(location.search).get('v') || null;
     let duration = 0;
-    // Gapless: getDuration() lagu berikutnya = bagian yang baru ter-buffer (29s, 49s, …) → pakai panjang asli lagu dulu
+    // Gapless: getDuration() for the next song = only the buffered part (29s, 49s, …) → prefer the real length
     try {
       const d = player?.getPlayerResponse?.()?.videoDetails;
       if (d && d.videoId === videoId) duration = Number(d.lengthSeconds) || 0;
     } catch {}
     if (!duration) try { duration = Number(player?.getDuration?.()) || 0; } catch {}
     if (!duration && video && Number.isFinite(video.duration)) duration = video.duration;
-    // Saat iklan, durasi milik iklan — jangan dipakai untuk estimasi lirik
+    // During ads the duration belongs to the ad — don't use it for lyric estimation
     const ad = !!player?.classList?.contains('ad-showing');
     if (ad) duration = 0;
-    // Selisih jam <video> vs posisi lagu (gapless: lagu berikutnya tidak mulai dari 0)
+    // Offset between the <video> clock and song position (gapless: the next song doesn't start at 0)
     let base;
     try {
       const ct = Number(player?.getCurrentTime?.());
