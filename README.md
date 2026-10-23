@@ -33,12 +33,13 @@ For local Whisper on a Mac, use a server that exposes `/v1/audio/transcriptions`
 • Drag the header to move, drag the bottom-right corner to resize
 • Click a lyric line to jump to that part
 • A- / A+ text size
+• − / + next to the source badge: shift lyric timing by 0.25s for this song when lyrics run early or late. Click the value to reset
 • ✎ button: enter or edit lyrics yourself. Plain text gets estimated timing, LRC format is synced right away. Manual lyrics always win for that song
 • Tap sync (in the editor): the song plays from the start, press Space/Enter or click as each line begins; Backspace undoes, Esc cancels. Saved as LRC
 • ⟳ button (match timing): AI listens from start to end and matches each lyric line to its time. The known lyrics are sent to the AI so it hears the right words. The text stays the same, only timestamps are saved
 • ✦ button (recreate lyrics): AI listens from the start and writes new lyrics, used for that song from then on. Reset via "Reset AI lyrics & timing for this song" in the popup
 • PiP button: lyrics window floats above all tabs and apps
-• Minimize: shows only the line being sung; the width can be resized
+• Minimize: shows only the line being sung, always on one row (long lines shrink to fit); the width can be resized
 • Popup → Display: background transparency slider, and "Show menu only on hover" (only the lyrics show until the cursor enters)
 • Alt+Shift+L: show / hide
 

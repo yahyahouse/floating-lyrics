@@ -217,12 +217,12 @@ async function handle(msg, sender) {
 
     case 'ai:clear': {
       if (msg.videoId) {
-        await chrome.storage.local.remove([`ai:${msg.videoId}`, `sync:${msg.videoId}`, `pref:${msg.videoId}`]);
+        await chrome.storage.local.remove([`ai:${msg.videoId}`, `sync:${msg.videoId}`, `pref:${msg.videoId}`, `ofs:${msg.videoId}`]);
         if (msg.tabId != null) notifyTab(msg.tabId, { type: 'ai:regenerate', videoId: msg.videoId });
         return { ok: true, removed: 1 };
       }
       const all = await chrome.storage.local.get(null);
-      const keys = Object.keys(all).filter((k) => k.startsWith('ai:') || k.startsWith('sync:') || k.startsWith('pref:'));
+      const keys = Object.keys(all).filter((k) => k.startsWith('ai:') || k.startsWith('sync:') || k.startsWith('pref:') || k.startsWith('ofs:'));
       await chrome.storage.local.remove(keys);
       return { ok: true, removed: keys.length };
     }

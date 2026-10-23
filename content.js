@@ -124,6 +124,12 @@ button { all: unset; cursor: pointer; }
 .artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .badge { flex: none; font-size: 10px; letter-spacing: .03em; padding: 1px 7px; border-radius: 99px; background: rgba(255, 255, 255, .1); color: rgba(255, 255, 255, .75); }
 .badge:empty { display: none; }
+.ofs { display: none; flex: none; align-items: center; gap: 1px; font-size: 10.5px; color: rgba(255, 255, 255, .55); }
+.ofs.show { display: inline-flex; }
+.ofs button { width: 16px; height: 16px; display: grid; place-items: center; border-radius: 5px; font-size: 12px; line-height: 1; }
+.ofs button:hover { background: rgba(255, 255, 255, .1); color: #fff; }
+.ofs .v { min-width: 34px; text-align: center; cursor: pointer; font-variant-numeric: tabular-nums; }
+.ofs.on .v { color: #ffb74d; }
 .actions { display: flex; gap: 2px; flex: none; }
 .actions button {
   width: 26px; height: 26px; display: grid; place-items: center; border-radius: 8px;
@@ -187,7 +193,7 @@ button { all: unset; cursor: pointer; }
 .nowline { display: none; }
 .card.min .nowline {
   display: block; padding: 0 16px 12px; font-size: var(--fs); line-height: 1.35; font-weight: 600;
-  overflow-wrap: anywhere; animation: fadein .25s ease;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: fadein .25s ease;
 }
 .card.min .nowline:empty { display: none; }
 .nowline.next { color: rgba(255, 255, 255, .45); }
@@ -215,7 +221,7 @@ button { all: unset; cursor: pointer; }
   <div class="head">
     <div class="meta">
       <div class="title">Floating Lyrics</div>
-      <div class="sub"><span class="artist"></span><span class="badge"></span></div>
+      <div class="sub"><span class="artist"></span><span class="badge"></span><span class="ofs"><button data-ofs="-1" title="Lyrics earlier">−</button><span class="v" title="Lyric timing offset · click to reset"></span><button data-ofs="1" title="Lyrics later">+</button></span></div>
     </div>
     <div class="actions">
       <button data-act="smaller" title="Smaller text">A-</button>
@@ -311,6 +317,7 @@ button { all: unset; cursor: pointer; }
         ? { mw: card.offsetWidth }
         : { w: card.offsetWidth, h: card.offsetHeight };
       Object.assign(size, patch);
+      fitNowLine();
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => cb.onSaveUi(patch), 400);
     }).observe(card);
@@ -319,6 +326,12 @@ button { all: unset; cursor: pointer; }
     const holdScroll = () => { userScrollUntil = Date.now() + 3000; };
     scroller.addEventListener('wheel', holdScroll, { passive: true });
     scroller.addEventListener('touchmove', holdScroll, { passive: true });
+
+    q('.ofs').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-ofs]');
+      if (b) cb.onOffset(Number(b.dataset.ofs));
+      else if (e.target.closest('.v')) cb.onOffset(0);
+    });
 
     linesEl.addEventListener('click', (e) => {
       const el = e.target.closest('.line');
@@ -338,6 +351,7 @@ button { all: unset; cursor: pointer; }
       else if (act === 'min') {
         card.classList.toggle('min');
         applySize();
+        fitNowLine();
         place(pos.x, pos.y);
         cb.onSaveUi({ min: card.classList.contains('min') });
       }
@@ -391,6 +405,16 @@ button { all: unset; cursor: pointer; }
     }
 
     let current = -1;
+    // Minimized mode: shrink the font (down to 60%) so a long line fits one row; the rest gets "…"
+    function fitNowLine() {
+      nowEl.style.fontSize = '';
+      if (!nowEl.clientWidth || nowEl.scrollWidth <= nowEl.clientWidth) return;
+      const fs = parseFloat(getComputedStyle(nowEl).fontSize);
+      const pad = 32;
+      const ratio = (nowEl.clientWidth - pad) / (nowEl.scrollWidth - pad);
+      nowEl.style.fontSize = `${Math.max(fs * 0.6, fs * ratio).toFixed(1)}px`;
+    }
+
     // Minimized mode: show the line being sung (or the first line, dimmed, before it starts)
     function setNowLine(i) {
       const el = lineEls[i] || (i < 0 ? lineEls[0] : null);
@@ -402,6 +426,7 @@ button { all: unset; cursor: pointer; }
       nowEl.style.animation = 'none';
       void nowEl.offsetWidth;
       nowEl.style.animation = '';
+      fitNowLine();
     }
 
     const api = {
@@ -415,10 +440,18 @@ button { all: unset; cursor: pointer; }
         size = { w: u.w || 0, h: u.h || 0, mw: u.mw || 0 };
         card.classList.toggle('min', !!u.min);
         applySize();
+        requestAnimationFrame(fitNowLine);
         requestAnimationFrame(() => place(u.x ?? innerWidth - card.offsetWidth - 24, u.y ?? 88));
       },
       setVisible(v) { if (!pipWin) host.style.display = v ? '' : 'none'; },
-      setFont(px) { card.style.setProperty('--fs', `${px}px`); },
+      setFont(px) { card.style.setProperty('--fs', `${px}px`); fitNowLine(); },
+      // Offset in seconds; null hides the control
+      setOffset(sec) {
+        const el = q('.ofs');
+        el.classList.toggle('show', sec !== null);
+        el.classList.toggle('on', !!sec);
+        el.querySelector('.v').textContent = `${sec > 0 ? '+' : ''}${(sec || 0).toFixed(2)}s`;
+      },
       setAutoHide(on) { card.classList.toggle('autohide', !!on); },
       // pct: 0 = solid background, 100 = fully see-through
       setTransparency(pct) {
@@ -562,6 +595,27 @@ button { all: unset; cursor: pointer; }
     };
   }
 
+  // ---------- Timing offset per song (+ = lyrics later) ----------
+  const OFFSET_STEP = 0.25;
+  let offset = 0;
+
+  async function changeOffset(d) {
+    if (!track) return;
+    offset = d ? Math.round((offset + d * OFFSET_STEP) * 100) / 100 : 0;
+    offset = Math.min(30, Math.max(-30, offset));
+    ui.setOffset(offset);
+    syncNow();
+    const key = `ofs:${track.videoId}`;
+    if (offset) await chrome.storage.local.set({ [key]: offset });
+    else await chrome.storage.local.remove(key);
+  }
+
+  // New timestamps (AI sync, manual LRC, tap, recreate) already match the audio → drop the old offset
+  async function resetOffset(vid) {
+    await chrome.storage.local.remove(`ofs:${vid}`);
+    if (track?.videoId === vid) { offset = 0; ui.setOffset(lyrics?.lines?.length ? 0 : null); }
+  }
+
   function badgeFor(l) {
     if (l.aiSynced) return `${l.base} · AI sync`;
     if (l.estimated) return `${l.base} · estimated`;
@@ -602,7 +656,7 @@ button { all: unset; cursor: pointer; }
       // If timing is already right, fill in LRC format so the timing is saved too
       text = lyrics.estimated
         ? lyrics.lines.map((l) => l.text).join('\n')
-        : lyrics.lines.map((l) => `[${fmtTime(l.t)}] ${l.text}`).join('\n');
+        : lyrics.lines.map((l) => `[${fmtTime(Math.max(0, l.t + offset))}] ${l.text}`).join('\n');
     }
     ui.openEditor(text, lyrics?.base === 'Manual');
   }
@@ -621,6 +675,7 @@ button { all: unset; cursor: pointer; }
     if (!text) { ui.toast('Lyrics are empty.'); return; }
     await chrome.storage.local.set({ [`user:${vid}`]: { text, updatedAt: Date.now() } });
     await dropManualSync(vid);
+    await resetOffset(vid);
     ui.closeEditor();
     editingVid = null;
     if (track?.videoId !== vid) { ui.toast('Lyrics saved for the previous song.'); return; }
@@ -662,6 +717,7 @@ button { all: unset; cursor: pointer; }
     ui.setActive(-1);
     ui.setSyncVisible(false);
     ui.setBadge('Tap sync');
+    ui.setOffset(null);
     renderTap();
     seekSong(v, 0);
     lastTime = 0;
@@ -734,6 +790,7 @@ button { all: unset; cursor: pointer; }
     ui.setLines(l.lines);
     ui.setBadge(badgeFor(l));
     ui.setFoot(l.footer || '');
+    ui.setOffset(l.lines.length ? offset : null);
     if (!isRecording()) ui.setSyncVisible(l.base !== 'AI' && l.lines.length > 0);
     syncNow();
   }
@@ -753,7 +810,7 @@ button { all: unset; cursor: pointer; }
   function syncNow() {
     const v = getVideo();
     if (!v || !lyrics || !lyrics.lines.length) return;
-    const i = indexAt(songTime(v) + 0.2);
+    const i = indexAt(songTime(v) + 0.2 - (tap ? 0 : offset));
     if (i !== activeIndex) {
       activeIndex = i;
       ui.setActive(i);
@@ -772,6 +829,8 @@ button { all: unset; cursor: pointer; }
     if (!(rec.state === 'transcribing' && rec.videoId === t.videoId)) rec = { state: 'idle' };
     ui.clearLines();
     ui.setTrack(t);
+    offset = 0;
+    ui.setOffset(null);
     ui.setBadge('');
     ui.setFoot('');
     ui.setSyncVisible(false);
@@ -780,9 +839,10 @@ button { all: unset; cursor: pointer; }
 
     ui.setEditVisible(true);
     ui.setRecreateVisible(true);
-    const keys = [`ai:${t.videoId}`, `sync:${t.videoId}`, `user:${t.videoId}`, `pref:${t.videoId}`];
+    const keys = [`ai:${t.videoId}`, `sync:${t.videoId}`, `user:${t.videoId}`, `pref:${t.videoId}`, `ofs:${t.videoId}`];
     const store = await chrome.storage.local.get(keys);
     if (token !== loadToken) return;
+    offset = Number(store[keys[4]]) || 0;
     const cached = store[keys[0]];
     syncCache = store[keys[1]] || null;
 
@@ -994,6 +1054,7 @@ button { all: unset; cursor: pointer; }
     const vid = track.videoId;
     await chrome.storage.local.set({ [`pref:${vid}`]: 'ai' });
     await chrome.storage.local.remove(`ai:${vid}`);
+    await resetOffset(vid);
     if (track?.videoId !== vid) return;
     lyrics = null;
     activeIndex = -1;
@@ -1018,6 +1079,7 @@ button { all: unset; cursor: pointer; }
     }
     const entry = { times, n: job.rows.length, base: job.base, createdAt: Date.now() };
     await chrome.storage.local.set({ [`sync:${videoId}`]: entry });
+    await resetOffset(videoId);
     if (track?.videoId === videoId) {
       syncCache = entry;
       if (lyrics && lyrics.base === job.base && lyrics.lines.length === job.rows.length) {
@@ -1378,8 +1440,9 @@ button { all: unset; cursor: pointer; }
         if (tap) return tapNext();
         const v = getVideo();
         const line = lyrics?.lines?.[i];
-        if (v && line) seekSong(v, line.t);
+        if (v && line) seekSong(v, line.t + offset);
       },
+      onOffset: changeOffset,
       onSync: requestSync,
       onRecreate: requestRecreate,
       onEdit: openEditor,
