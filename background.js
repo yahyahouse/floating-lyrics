@@ -81,9 +81,11 @@ function parseLrc(lrc) {
 const cleanTitle = (s = '') =>
   s.replace(/\s*[([][^)\]]*(official|video|audio|lyric|mv|visualizer|live)[^)\]]*[)\]]/gi, '').trim();
 
+const LRCLIB_HEADERS = { 'Lrclib-Client': 'YTM Floating Lyrics v1.0.0' };
+
 async function lrclib(t) {
   if (!t?.title) return { found: false };
-  const headers = { 'Lrclib-Client': 'YTM Floating Lyrics v1.0.0' };
+  const headers = LRCLIB_HEADERS;
   const title = cleanTitle(t.title);
   const dur = Math.round(t.duration || 0);
   try {
@@ -123,6 +125,62 @@ async function lrclib(t) {
   return { found: false };
 }
 
+function fromHit(hit) {
+  if (hit?.syncedLyrics) {
+    const lines = parseLrc(hit.syncedLyrics);
+    if (lines.length) return { found: true, synced: true, lines };
+  }
+  if (hit?.plainLyrics) return { found: true, synced: false, text: hit.plainLyrics };
+  return { found: false };
+}
+
+// One exact LRCLIB entry, picked by the user from the search list
+async function lrclibById(id) {
+  try {
+    const r = await fetch(`https://lrclib.net/api/get/${encodeURIComponent(id)}`, { headers: LRCLIB_HEADERS });
+    if (r.ok) return fromHit(await r.json());
+  } catch {}
+  return { found: false };
+}
+
+// Candidate list for the "find lyrics" panel: best length match first, synced before plain
+async function lrclibSearch({ title, artist, duration }) {
+  title = cleanTitle(title || '');
+  if (!title) return { items: [] };
+  const dur = Math.round(duration || 0);
+  const get = async (params) => {
+    const r = await fetch(`https://lrclib.net/api/search?${new URLSearchParams(params)}`, { headers: LRCLIB_HEADERS });
+    return r.ok ? r.json() : [];
+  };
+  let list;
+  try {
+    list = await get(artist ? { track_name: title, artist_name: artist } : { track_name: title });
+    if (list.length < 3) {
+      const seen = new Set(list.map((x) => x.id));
+      for (const x of await get({ q: `${title} ${artist || ''}`.trim() })) if (!seen.has(x.id)) list.push(x);
+    }
+  } catch {
+    return { error: 'Could not reach LRCLIB. Check your connection.' };
+  }
+  const items = list
+    .filter((x) => x.syncedLyrics || x.plainLyrics)
+    .map((x) => {
+      const d = Math.round(x.duration || 0);
+      return {
+        id: x.id,
+        title: x.trackName || '',
+        artist: x.artistName || '',
+        album: x.albumName || '',
+        duration: d,
+        synced: !!x.syncedLyrics,
+        lengthMatch: !!dur && Math.abs(d - dur) <= 4,
+        diff: dur ? Math.abs(d - dur) : 0
+      };
+    })
+    .sort((a, b) => (b.lengthMatch - a.lengthMatch) || (b.synced - a.synced) || (a.diff - b.diff));
+  return { items: items.slice(0, 15) };
+}
+
 // ---------- Message router ----------
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.target === 'offscreen') return;
@@ -138,6 +196,12 @@ async function handle(msg, sender) {
   switch (msg.type) {
     case 'lrclib':
       return lrclib(msg.track);
+
+    case 'lrclib:search':
+      return lrclibSearch(msg);
+
+    case 'lrclib:get':
+      return lrclibById(msg.id);
 
     case 'capture:status': {
       const st = await captureStatus();

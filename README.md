@@ -6,7 +6,7 @@ Floating lyrics synced with the song playing on YouTube Music. When lyrics are m
 
 • Your own lyrics (entered or tap-synced in the editor)
 • AI lyrics, if you asked AI to recreate them for that song (✦)
-• LRCLIB lyrics for your custom search title, if you changed the title for that song
+• LRCLIB lyrics you picked with 🔍 for that song
 • YouTube Music's own lyrics (synced version, if available)
 • Static YTM lyrics → timestamps from LRCLIB; if not found, lines get estimated timing (or AI timing from ⟳)
 • Cached AI lyrics created earlier
@@ -35,7 +35,7 @@ For local Whisper on a Mac, use a server that exposes `/v1/audio/transcriptions`
 • Click a lyric line to jump to that part
 • A- / A+ text size
 • − / + next to the source badge: shift lyric timing by 0.25s for this song when lyrics run early or late. Click the value to reset
-• Click the song title / artist: change the title & artist used to search lyrics (e.g. when the video title has extra words or the wrong lyrics show up). Searches LRCLIB with the new name, saved per song (✎ mark on the title). "Use original" goes back
+• 🔍 button (or click the song title): wrong or missing lyrics? Search LRCLIB by title & artist and pick the right result. Results show Synced / Text only and "Same length" when the duration matches the song. Shorter-title suggestions ("Try: …") strip words like "Mashup" or "(Official Video)". The pick is saved per song (✎ mark on the title); "Use original" goes back
 • ✎ button: enter or edit lyrics yourself. Plain text gets estimated timing, LRC format is synced right away. Manual lyrics always win for that song
 • Tap sync (in the editor): the song plays from the start, press Space/Enter or click as each line begins; Backspace undoes, Esc cancels. Saved as LRC
 • ⟳ button (match timing): AI listens from start to end and matches each lyric line to its time. The known lyrics are sent to the AI so it hears the right words. The text stays the same, only timestamps are saved
