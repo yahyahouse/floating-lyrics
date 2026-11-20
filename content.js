@@ -145,21 +145,32 @@ button { all: unset; cursor: pointer; }
 .mini.paused { background: rgba(255, 255, 255, .4); }
 .actions [data-act="edit"], .actions [data-act="recreate"] { display: none; }
 .actions [data-act="edit"].show, .actions [data-act="recreate"].show { display: grid; }
-.editor { position: absolute; inset: 0; display: none; flex-direction: column; gap: 8px; padding: 12px 14px; background: #0e0e10; }
-.editor.show { display: flex; }
+.editor, .finder { position: absolute; inset: 0; display: none; flex-direction: column; gap: 8px; padding: 12px 14px; background: #0e0e10; }
+.editor.show, .finder.show { display: flex; }
+.meta .title, .meta .artist { cursor: pointer; }
+.meta .title:hover, .meta .artist:hover { text-decoration: underline; text-decoration-color: rgba(255, 255, 255, .35); }
+.title.custom::after { content: " ✎"; font-weight: 400; color: #ffb74d; }
+.finder label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: rgba(255, 255, 255, .55); }
+.finder input {
+  outline: none; padding: 8px 10px; border-radius: 10px; font: 13px inherit; font-family: inherit;
+  background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .1); color: #fff;
+}
+.finder input:focus { border-color: rgba(255, 255, 255, .3); }
+.finder .orig { font-size: 11px; line-height: 1.45; color: rgba(255, 255, 255, .45); overflow-wrap: anywhere; }
+.finder .btns { margin-top: auto; }
 .editor textarea {
   flex: 1; min-height: 0; resize: none; outline: none; padding: 10px 12px; border-radius: 10px;
   background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .1); color: #fff;
   font: 13px/1.55 inherit; font-family: inherit;
 }
 .editor textarea:focus { border-color: rgba(255, 255, 255, .3); }
-.editor .hint { font-size: 11px; line-height: 1.45; color: rgba(255, 255, 255, .45); }
-.editor .btns { display: flex; gap: 6px; align-items: center; }
-.editor .btns button { padding: 6px 12px; border-radius: 99px; font-size: 12px; font-weight: 600; }
-.editor .del { margin-right: auto; color: #ff8a80; padding-left: 2px !important; }
-.editor .del[hidden] { display: none; }
-.editor .sec { border: 1px solid rgba(255, 255, 255, .15); color: rgba(255, 255, 255, .8); }
-.editor .pri { background: #fff; color: #000; }
+.editor .hint, .finder .hint { font-size: 11px; line-height: 1.45; color: rgba(255, 255, 255, .45); }
+:is(.editor, .finder) .btns { display: flex; gap: 6px; align-items: center; }
+:is(.editor, .finder) .btns button { padding: 6px 12px; border-radius: 99px; font-size: 12px; font-weight: 600; }
+:is(.editor, .finder) .del { margin-right: auto; color: #ff8a80; padding-left: 2px !important; }
+:is(.editor, .finder) .del[hidden] { display: none; }
+:is(.editor, .finder) .sec { border: 1px solid rgba(255, 255, 255, .15); color: rgba(255, 255, 255, .8); }
+:is(.editor, .finder) .pri { background: #fff; color: #000; }
 .view { position: relative; flex: 1; min-height: 0; }
 .scroller {
   position: relative; height: 100%; overflow-y: auto; padding: 0 18px;
@@ -246,6 +257,17 @@ button { all: unset; cursor: pointer; }
         <button class="pri" data-ed="save">Save</button>
       </div>
     </div>
+    <div class="finder">
+      <label>Song title<input name="title" spellcheck="false" autocomplete="off"></label>
+      <label>Artist<input name="artist" spellcheck="false" autocomplete="off"></label>
+      <div class="orig"></div>
+      <div class="hint">Lyrics are searched on LRCLIB with this title &amp; artist. Saved for this song only; your own lyrics (✎) still win.</div>
+      <div class="btns">
+        <button class="del" data-fd="reset">Use original</button>
+        <button class="sec" data-fd="cancel">Cancel</button>
+        <button class="pri" data-fd="save">Search</button>
+      </div>
+    </div>
   </div>
   <div class="nowline"></div>
   <div class="foot"></div>
@@ -284,10 +306,14 @@ button { all: unset; cursor: pointer; }
       const r = host.getBoundingClientRect();
       const dx = e.clientX - r.left;
       const dy = e.clientY - r.top;
+      const sx = e.clientX;
+      const sy = e.clientY;
+      const onName = !!e.target.closest('.title, .artist');
       head.setPointerCapture(e.pointerId);
       head.classList.add('dragging');
       const move = (ev) => place(ev.clientX - dx, ev.clientY - dy);
-      const up = () => {
+      const up = (ev) => {
+        if (onName && ev.type === 'pointerup' && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 4) cb.onSearchEdit();
         head.removeEventListener('pointermove', move);
         head.removeEventListener('pointerup', up);
         head.removeEventListener('pointercancel', up);
@@ -297,6 +323,11 @@ button { all: unset; cursor: pointer; }
       head.addEventListener('pointermove', move);
       head.addEventListener('pointerup', up);
       head.addEventListener('pointercancel', up);
+    });
+
+    // In PiP the drag handler is off → open the title editor on a plain click
+    q('.meta').addEventListener('click', (e) => {
+      if (pipWin && e.target.closest('.title, .artist')) cb.onSearchEdit();
     });
 
     addEventListener('resize', () => { if (!pipWin) place(pos.x, pos.y); });
@@ -364,6 +395,20 @@ button { all: unset; cursor: pointer; }
     editor.querySelector('[data-ed="save"]').addEventListener('click', () => cb.onEditorSave(editor.querySelector('textarea').value));
     editor.querySelector('.del').addEventListener('click', () => cb.onEditorDelete());
     editor.querySelector('[data-ed="tap"]').addEventListener('click', () => cb.onTapStart(editor.querySelector('textarea').value));
+
+    // Search title / artist editor
+    const finder = q('.finder');
+    const fIn = (n) => finder.querySelector(`input[name="${n}"]`);
+    const submitFinder = () => cb.onSearchSave({ title: fIn('title').value, artist: fIn('artist').value });
+    for (const ev of ['keyup', 'keypress']) finder.addEventListener(ev, (e) => e.stopPropagation());
+    finder.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); submitFinder(); }
+      else if (e.key === 'Escape') finder.classList.remove('show');
+    });
+    finder.querySelector('[data-fd="cancel"]').addEventListener('click', () => finder.classList.remove('show'));
+    finder.querySelector('[data-fd="save"]').addEventListener('click', submitFinder);
+    finder.querySelector('[data-fd="reset"]').addEventListener('click', () => cb.onSearchSave(null));
 
     async function togglePip() {
       if (pipWin) { pipWin.close(); return; }
@@ -459,10 +504,26 @@ button { all: unset; cursor: pointer; }
         card.style.setProperty('--bg-a', a.toFixed(2));
         card.classList.toggle('clear', a < 0.5);
       },
-      setTrack(t) {
-        q('.title').textContent = t?.title || 'Floating Lyrics';
-        q('.artist').textContent = t?.artist || '';
+      // t: track as shown on YT Music; custom: { title, artist } used for searching instead
+      setTrack(t, custom = null) {
+        const titleEl = q('.title');
+        titleEl.textContent = custom?.title || t?.title || 'Floating Lyrics';
+        titleEl.classList.toggle('custom', !!custom);
+        q('.artist').textContent = custom ? custom.artist : t?.artist || '';
+        const tip = t ? 'Click to change the title / artist used to search lyrics' : '';
+        titleEl.title = custom ? `Searching as "${custom.title}" · original: "${t.title}"\n${tip}` : tip;
+        q('.artist').title = tip;
       },
+      openFinder(t, custom) {
+        fIn('title').value = custom?.title ?? t.title ?? '';
+        fIn('artist').value = custom?.artist ?? t.artist ?? '';
+        finder.querySelector('.orig').textContent = `Original: ${t.title || '?'}${t.artist ? ` — ${t.artist}` : ''}`;
+        finder.querySelector('.del').hidden = !custom;
+        q('.editor').classList.remove('show');
+        finder.classList.add('show');
+        setTimeout(() => { fIn('title').focus(); fIn('title').select(); }, 0);
+      },
+      closeFinder() { finder.classList.remove('show'); },
       setBadge(text) { q('.badge').textContent = text || ''; },
       setFoot(text) { footEl.textContent = text || ''; },
       setLines(lines) {
@@ -532,6 +593,7 @@ button { all: unset; cursor: pointer; }
       },
       setEditVisible(v) { q('[data-act="edit"]').classList.toggle('show', !!v); },
       openEditor(text, hasManual) {
+        finder.classList.remove('show');
         const ed = q('.editor');
         ed.querySelector('textarea').value = text || '';
         ed.querySelector('.del').hidden = !hasManual;
@@ -697,6 +759,40 @@ button { all: unset; cursor: pointer; }
     if (track?.videoId === vid) loadTrack({ ...track });
   }
 
+  // ---------- Custom search title / artist (per song) ----------
+  let custom = null;    // { title, artist } for the current track, or null
+  let finderVid = null;
+
+  function openFinder() {
+    if (!track) return;
+    finderVid = track.videoId;
+    ui.openFinder(track, custom);
+  }
+
+  // q: { title, artist } to search with, or null to go back to the original
+  async function saveSearch(q) {
+    const vid = finderVid || track?.videoId;
+    if (!vid) return;
+    const key = `find:${vid}`;
+    if (q) {
+      q = { title: String(q.title || '').trim(), artist: String(q.artist || '').trim() };
+      if (!q.title) { ui.toast('Title is empty.'); return; }
+      const orig = track?.videoId === vid ? track : null;
+      if (orig && q.title === orig.title && q.artist === (orig.artist || '')) q = null;
+    }
+    if (q) await chrome.storage.local.set({ [key]: q });
+    else await chrome.storage.local.remove(key);
+    // Old timing belongs to the old lyrics
+    const sk = `sync:${vid}`;
+    const cur = (await chrome.storage.local.get(sk))[sk];
+    if (cur?.base === 'LRCLIB') await chrome.storage.local.remove(sk);
+    await resetOffset(vid);
+    ui.closeFinder();
+    finderVid = null;
+    if (track?.videoId !== vid) { ui.toast('Saved for the previous song.'); return; }
+    loadTrack({ ...track });
+  }
+
   // ---------- Tap sync: user presses space / clicks as each line begins ----------
   const TAP_LAG = 0.1; // compensates for reaction time
   let tap = null; // { videoId, rows, times }
@@ -822,7 +918,9 @@ button { all: unset; cursor: pointer; }
     if (tap && tap.videoId !== t.videoId) { tap = null; ui.toast('Tap sync cancelled because the song changed.'); }
     if (tap) return;
     const token = ++loadToken;
+    if (finderVid && finderVid !== t.videoId) { finderVid = null; ui.closeFinder(); }
     track = t;
+    custom = null;
     lyrics = null;
     activeIndex = -1;
     // Keep track of a transcription still running for this song (repeat, regenerate, settings change)
@@ -839,17 +937,29 @@ button { all: unset; cursor: pointer; }
 
     ui.setEditVisible(true);
     ui.setRecreateVisible(true);
-    const keys = [`ai:${t.videoId}`, `sync:${t.videoId}`, `user:${t.videoId}`, `pref:${t.videoId}`, `ofs:${t.videoId}`];
+    const keys = [`ai:${t.videoId}`, `sync:${t.videoId}`, `user:${t.videoId}`, `pref:${t.videoId}`, `ofs:${t.videoId}`, `find:${t.videoId}`];
     const store = await chrome.storage.local.get(keys);
     if (token !== loadToken) return;
     offset = Number(store[keys[4]]) || 0;
     const cached = store[keys[0]];
     syncCache = store[keys[1]] || null;
+    custom = store[keys[5]]?.title ? store[keys[5]] : null;
+    if (custom) ui.setTrack(t, custom);
 
     // 0. User-entered lyrics always win
     if (store[keys[2]]?.text) return show(manualLyrics(store[keys[2]].text, t.duration));
     // User asked AI to recreate the lyrics → use the AI result even if YT Music has lyrics
     if (store[keys[3]] === 'ai' && cached?.lines?.length) return show({ ...cached, base: 'AI' });
+
+    // Custom search title → the user wants these lyrics instead of YT Music's
+    if (custom) {
+      ui.showState({ title: 'Searching for lyrics…', sub: `"${custom.title}"${custom.artist ? ` — ${custom.artist}` : ''}` });
+      const lr = await bg({ type: 'lrclib', track: { ...t, ...custom, album: '', loose: true } });
+      if (token !== loadToken) return;
+      if (lr?.synced && lr.lines?.length) return show({ base: 'LRCLIB', lines: lr.lines });
+      if (lr?.found && lr.text) return show({ base: 'LRCLIB', estimated: true, lines: estimateLines(lr.text, t.duration) });
+      ui.toast(`No lyrics found for "${custom.title}". Click the title to try another.`);
+    }
 
     // 1. YouTube Music's own lyrics
     // An error (ytcfg not ready, timeout, HTTP) differs from "no lyrics" → retry first
@@ -1161,8 +1271,8 @@ button { all: unset; cursor: pointer; }
       offset: songTime(v),
       mode,
       meta: {
-        title: track.title,
-        artist: track.artist,
+        title: custom?.title || track.title,
+        artist: custom ? custom.artist : track.artist,
         duration: track.duration,
         // Sync mode: give the AI the lyric text so what it hears leans toward the right words
         lyrics: mode === 'sync' ? syncJobs.get(track.videoId)?.rows : undefined
@@ -1449,6 +1559,8 @@ button { all: unset; cursor: pointer; }
       onEditorSave: saveManual,
       onEditorDelete: deleteManual,
       onTapStart: startTap,
+      onSearchEdit: openFinder,
+      onSearchSave: saveSearch,
       onPipClosed: () => ui.setVisible(settings.enabled)
     });
     ui.mount();

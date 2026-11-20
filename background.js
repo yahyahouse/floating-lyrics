@@ -96,12 +96,23 @@ async function lrclib(t) {
     if (!hit?.syncedLyrics) {
       const q = new URLSearchParams({ track_name: title, artist_name: t.artist || '' });
       const r = await fetch(`https://lrclib.net/api/search?${q}`, { headers });
-      const list = r.ok ? await r.json() : [];
-      const close = (x) => !dur || Math.abs((x.duration || 0) - dur) <= 3;
+      let list = r.ok ? await r.json() : [];
+      if (t.loose && !list.length) {
+        const r2 = await fetch(`https://lrclib.net/api/search?${new URLSearchParams({ q: `${title} ${t.artist || ''}`.trim() })}`, { headers });
+        list = r2.ok ? await r2.json() : [];
+      }
+      // loose: title typed by the user → the video can be longer/shorter than the studio track
+      const close = (x) => !dur || Math.abs((x.duration || 0) - dur) <= (t.loose ? 20 : 3);
       const best = list
         .filter((x) => x.syncedLyrics && close(x))
         .sort((a, b) => Math.abs((a.duration || 0) - dur) - Math.abs((b.duration || 0) - dur))[0];
       hit = best || hit || list.find((x) => x.plainLyrics && close(x)) || null;
+      if (!hit && t.loose) {
+        hit = list
+          .filter((x) => x.syncedLyrics)
+          .sort((a, b) => Math.abs((a.duration || 0) - dur) - Math.abs((b.duration || 0) - dur))[0]
+          || list.find((x) => x.plainLyrics) || null;
+      }
     }
     if (hit?.syncedLyrics) {
       const lines = parseLrc(hit.syncedLyrics);
