@@ -4,7 +4,7 @@
   if (window.__ytmflLoaded) return;
   window.__ytmflLoaded = true;
 
-  const DEFAULTS = { enabled: true, useLrclib: true, aiEnabled: true, fontSize: 18, transparency: 22, autoHide: true };
+  const DEFAULTS = { enabled: true, useLrclib: true, aiEnabled: true, fontSize: 18, transparency: 22, autoHide: true, appHideTab: true };
 
   let settings = { ...DEFAULTS };
   let ui = null;
@@ -33,6 +33,10 @@
     timers = [];
     if (boundVideo) {
       boundVideo.removeEventListener('timeupdate', onTimeUpdate);
+      boundVideo.removeEventListener('play', onPlayState);
+      boundVideo.removeEventListener('pause', onPlayState);
+      boundVideo.removeEventListener('seeked', pushApp);
+      boundVideo.removeEventListener('ratechange', pushApp);
       boundVideo.removeEventListener('pause', onPauseLike);
       boundVideo.removeEventListener('waiting', onPauseLike);
       boundVideo.removeEventListener('playing', onPlaying);
@@ -1543,11 +1547,18 @@ button { all: unset; cursor: pointer; }
     if (!v || v === boundVideo) return;
     if (boundVideo) {
       boundVideo.removeEventListener('timeupdate', onTimeUpdate);
+      boundVideo.removeEventListener('play', onPlayState);
+      boundVideo.removeEventListener('pause', onPlayState);
       boundVideo.removeEventListener('pause', onPauseLike);
       boundVideo.removeEventListener('waiting', onPauseLike);
       boundVideo.removeEventListener('playing', onPlaying);
     }
     boundVideo = v;
+    v.addEventListener('play', onPlayState);
+    v.addEventListener('pause', onPlayState);
+    v.addEventListener('seeked', pushApp);
+    v.addEventListener('ratechange', pushApp);
+    onPlayState();
     v.addEventListener('timeupdate', onTimeUpdate);
     v.addEventListener('pause', onPauseLike);
     v.addEventListener('waiting', onPauseLike);
@@ -1648,6 +1659,21 @@ button { all: unset; cursor: pointer; }
           ui.toast(`AI lyrics failed: ${msg.error || 'unknown error'}`);
         }
         return;
+      case 'app:status':
+        setAppConnected(!!msg.connected);
+        if (msg.connected) pushApp();
+        return;
+      case 'app:cmd':
+        if (msg.cmd === 'seek' && Number.isInteger(msg.i)) seekToLine(msg.i);
+        else if (msg.cmd === 'toggle') {
+          const btn = document.querySelector('ytmusic-player-bar #play-pause-button');
+          const v = getVideo();
+          if (btn) btn.click();
+          else if (v) v.paused ? v.play() : v.pause();
+        } else if (msg.cmd === 'next' || msg.cmd === 'prev') {
+          document.querySelector(`ytmusic-player-bar .${msg.cmd === 'next' ? 'next' : 'previous'}-button`)?.click();
+        }
+        return;
       case 'ai:regenerate':
         if (track?.videoId === msg.videoId) {
           cancelRecording();
@@ -1656,6 +1682,98 @@ button { all: unset; cursor: pointer; }
         return;
     }
   });
+
+  // ---------- Desktop app (optional) ----------
+  // When the macOS "Floating Lyrics" app is running, what the overlay shows is mirrored to it
+  // (via background.js) and the in-tab overlay steps aside. Without the app nothing changes.
+  let appConnected = false;
+  let appTimer = null;
+  const appState = {
+    title: '', artist: '', badge: '', lines: [], active: -1, state: null,
+    font: DEFAULTS.fontSize, transparency: DEFAULTS.transparency, visible: true, paused: true,
+    time: 0, duration: 0
+  };
+
+  function onPlayState() {
+    const paused = boundVideo ? boundVideo.paused : true;
+    if (paused === appState.paused) return;
+    appState.paused = paused;
+    pushApp();
+  }
+
+  function pushApp() {
+    if (appTimer) return;
+    appTimer = setTimeout(async () => {
+      appTimer = null;
+      // Song position at send time; the app keeps counting on its own while playing
+      const v = boundVideo;
+      appState.time = v ? Math.round(songTime(v) * 1000) / 1000 : 0;
+      appState.duration = track?.duration || (v && Number.isFinite(v.duration) ? v.duration : 0);
+      const r = await bg({ type: 'app:state', state: appState });
+      if (r && !r.error) setAppConnected(!!r.connected);
+    }, 30);
+  }
+
+  function setAppConnected(c) {
+    if (c === appConnected) return;
+    appConnected = c;
+    applyVisible();
+  }
+
+  function applyVisible() {
+    appState.visible = !!settings.enabled;
+    pushApp();
+    ui.setVisible(settings.enabled && !(appConnected && settings.appHideTab));
+  }
+
+  // Wrap overlay methods so every change is also copied into appState
+  function mirrorToApp(api) {
+    const wrap = (name, fn) => {
+      const orig = api[name];
+      api[name] = (...args) => {
+        const r = orig.apply(api, args);
+        fn(...args);
+        pushApp();
+        return r;
+      };
+    };
+    wrap('setTrack', (t, custom = null) => {
+      appState.title = custom?.title || t?.title || '';
+      appState.artist = custom ? custom.artist || '' : t?.artist || '';
+    });
+    wrap('setLines', (lines) => {
+      appState.lines = lines.map((l) => l.text);
+      appState.active = -1;
+      appState.state = null;
+    });
+    wrap('clearLines', () => {
+      appState.lines = [];
+      appState.active = -1;
+    });
+    wrap('setActive', (i) => { appState.active = i; });
+    wrap('showState', ({ title, sub = '', progress = null, live = false }) => {
+      appState.state = { title, sub, live: !!live, progress };
+    });
+    wrap('setProgress', (p) => {
+      if (appState.state && appState.state.progress !== null) appState.state.progress = p;
+    });
+    wrap('setBadge', (text) => { appState.badge = text || ''; });
+    wrap('setFont', (px) => { appState.font = px; });
+    wrap('setTransparency', (pct) => { appState.transparency = Number(pct) || 0; });
+    return api;
+  }
+
+  async function appPing() {
+    const r = await bg({ type: 'app:ping' });
+    if (r && !r.error) setAppConnected(!!r.connected);
+  }
+
+  function seekToLine(i) {
+    if (tap) return tapNext();
+    const v = getVideo();
+    const line = lyrics?.lines?.[i];
+    if (v && line) seekSong(v, line.t + offset);
+  }
 
   // ---------- Settings ----------
   async function saveUi(patch) {
@@ -1667,7 +1785,7 @@ button { all: unset; cursor: pointer; }
     if (area !== 'local' || !changes.settings) return;
     const prev = settings;
     settings = { ...DEFAULTS, ...(changes.settings.newValue || {}) };
-    ui.setVisible(settings.enabled);
+    applyVisible();
     ui.setFont(settings.fontSize);
     ui.setTransparency(settings.transparency);
     ui.setAutoHide(settings.autoHide);
@@ -1679,18 +1797,13 @@ button { all: unset; cursor: pointer; }
   async function init() {
     const st = await chrome.storage.local.get(['settings', 'ui']);
     settings = { ...DEFAULTS, ...(st.settings || {}) };
-    ui = createOverlay({
+    ui = mirrorToApp(createOverlay({
       onSaveUi: saveUi,
       onFont: (d) => {
         const fontSize = Math.min(40, Math.max(12, (settings.fontSize || 18) + d * 2));
         chrome.storage.local.set({ settings: { ...settings, fontSize } });
       },
-      onSeek: (i) => {
-        if (tap) return tapNext();
-        const v = getVideo();
-        const line = lyrics?.lines?.[i];
-        if (v && line) seekSong(v, line.t + offset);
-      },
+      onSeek: seekToLine,
       onOffset: changeOffset,
       onSync: requestSync,
       onRecreate: requestRecreate,
@@ -1701,16 +1814,17 @@ button { all: unset; cursor: pointer; }
       onSearchEdit: openFinder,
       onSearchSave: saveSearch,
       onSearchQuery: searchLyrics,
-      onPipClosed: () => ui.setVisible(settings.enabled)
-    });
+      onPipClosed: applyVisible
+    }));
     ui.mount();
     ui.applyUi(st.ui || {});
     ui.setFont(settings.fontSize);
     ui.setTransparency(settings.transparency);
     ui.setAutoHide(settings.autoHide);
-    ui.setVisible(settings.enabled);
+    applyVisible();
     ui.showState({ title: 'Play a song to show lyrics' });
-    timers = [setInterval(poll, 500), setInterval(syncNow, 150)];
+    timers = [setInterval(poll, 500), setInterval(syncNow, 150), setInterval(appPing, 4000)];
+    appPing();
   }
 
   init();

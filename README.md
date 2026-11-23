@@ -45,6 +45,19 @@ For local Whisper on a Mac, use a server that exposes `/v1/audio/transcriptions`
 • Popup → Display: background transparency slider, and "Show menu only on hover" (only the lyrics show until the cursor enters)
 • Alt+Shift+L: show / hide
 
+## macOS app (optional)
+
+The extension works on its own. The Mac app in `macos-app/` is an extra: a native floating lyrics window that stays above every app, on every Space and over full-screen apps, with a menu bar icon.
+
+• Build: `cd macos-app && ./build.sh --install` (needs Xcode command line tools) → `/Applications/Floating Lyrics.app`
+• Open the app, then play a song on music.youtube.com. The extension connects to it within a few seconds
+• While the app is open the in-tab overlay hides (turn off "Hide tab overlay while the Mac app is open" in the popup to keep both). Quit the app → the in-tab overlay comes back
+• Player card: artist & title, scrolling lyrics (the sung line bright, the rest faded), progress bar with time, and ⏮ / Play-Pause / ⏭ buttons that control YouTube Music. Make the window shorter and the controls, then the progress bar, step aside
+• Menu bar icon: show/hide window, Current Line Only, Click-Through (clicks pass through the lyrics), Play / Pause, Open at Login
+• Drag the window by its top edge, resize from the edges. Click a line to jump to it. Text size and transparency follow the extension settings
+
+How it works: the app listens on `ws://127.0.0.1:47321` (localhost only, Chrome extension origins only). The extension's service worker connects to it and mirrors what the overlay shows. If the app isn't running the connection simply fails and nothing changes.
+
 ## Notes
 
 • While AI is listening, don't skip or seek until the song ends. Pausing and buffering are fine.

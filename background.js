@@ -6,6 +6,7 @@ const DEFAULT_SETTINGS = {
   fontSize: 18,
   transparency: 22,
   autoHide: true,
+  appHideTab: true,
   provider: 'openai',
   baseUrl: 'https://api.openai.com/v1',
   apiKey: '',
@@ -181,6 +182,56 @@ async function lrclibSearch({ title, artist, duration }) {
   return { items: items.slice(0, 15) };
 }
 
+// ---------- Desktop app bridge (optional) ----------
+// The macOS "Floating Lyrics" app runs a WebSocket server on localhost. When it is running, the
+// overlay state is mirrored to it; when it is not, connecting fails and the extension works alone.
+const APP_URL = 'ws://127.0.0.1:47321/ytmfl';
+let appWs = null;
+let appOpen = false;
+let appNextTry = 0;
+let appFails = 0;
+let appTab = null;   // tab whose state is shown in the app
+let appState = null; // last state, replayed when the app (re)connects
+
+function appSend(obj) {
+  if (appOpen) {
+    try { appWs.send(JSON.stringify(obj)); } catch {}
+  }
+}
+
+async function appBroadcast(connected) {
+  const tabs = await chrome.tabs.query({ url: 'https://music.youtube.com/*' }).catch(() => []);
+  for (const t of tabs) notifyTab(t.id, { type: 'app:status', connected });
+}
+
+function appConnect() {
+  if (appWs || Date.now() < appNextTry) return;
+  let ws;
+  try { ws = new WebSocket(APP_URL); } catch { return; }
+  appWs = ws;
+  ws.onopen = () => {
+    appOpen = true;
+    appFails = 0;
+    if (appState) appSend({ type: 'state', state: appState });
+    appBroadcast(true);
+  };
+  ws.onclose = () => {
+    const was = appOpen;
+    appWs = null;
+    appOpen = false;
+    // Back off while the app is not running: 3s, 6s, … up to 15s between attempts
+    appFails = was ? 0 : appFails + 1;
+    appNextTry = Date.now() + Math.min(15000, 3000 * Math.max(1, appFails));
+    if (was) appBroadcast(false);
+  };
+  ws.onerror = () => {};
+  ws.onmessage = (e) => {
+    let m;
+    try { m = JSON.parse(e.data); } catch { return; }
+    if (m?.type === 'cmd' && appTab != null) notifyTab(appTab, { type: 'app:cmd', cmd: m.cmd, i: m.i });
+  };
+}
+
 // ---------- Message router ----------
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.target === 'offscreen') return;
@@ -302,6 +353,19 @@ async function handle(msg, sender) {
       return { ok: true, removed: keys.length };
     }
 
+    // Overlay state from a YouTube Music tab → desktop app
+    case 'app:state':
+      if (tabId == null) return {};
+      appTab = tabId;
+      appState = msg.state;
+      appSend({ type: 'state', state: appState });
+      appConnect();
+      return { connected: appOpen };
+
+    case 'app:ping':
+      appConnect();
+      return { connected: appOpen };
+
     case 'ai:count': {
       const all = await chrome.storage.local.get(null);
       return { count: Object.keys(all).filter((k) => k.startsWith('ai:') || k.startsWith('sync:')).length };
@@ -317,9 +381,23 @@ async function releaseIf(tabId) {
   const st = await captureStatus();
   if (st.capturing && st.tabId === tabId) await toOffscreen({ type: 'release' }).catch(() => {});
 }
-chrome.tabs.onRemoved.addListener((tabId) => { releaseIf(tabId); });
+chrome.tabs.onRemoved.addListener((tabId) => {
+  releaseIf(tabId);
+  if (tabId === appTab) {
+    appTab = null;
+    appState = null;
+    appSend({ type: 'state', state: null });
+  }
+});
 chrome.tabs.onUpdated.addListener((tabId, info) => {
-  if (info.url && !info.url.startsWith('https://music.youtube.com/')) releaseIf(tabId);
+  if (info.url && !info.url.startsWith('https://music.youtube.com/')) {
+    releaseIf(tabId);
+    if (tabId === appTab) {
+      appTab = null;
+      appState = null;
+      appSend({ type: 'state', state: null });
+    }
+  }
 });
 
 // Shortcut Alt+Shift+L

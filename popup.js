@@ -1,5 +1,5 @@
 const DEFAULTS = {
-  enabled: true, useLrclib: true, aiEnabled: true, fontSize: 18, transparency: 22, autoHide: true,
+  enabled: true, useLrclib: true, aiEnabled: true, fontSize: 18, transparency: 22, autoHide: true, appHideTab: true,
   provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'whisper-1', language: ''
 };
 const PROVIDERS = {
@@ -18,7 +18,7 @@ let current = null; // { track }
 async function load() {
   const { settings: s } = await chrome.storage.local.get('settings');
   settings = { ...DEFAULTS, ...(s || {}) };
-  for (const k of ['enabled', 'useLrclib', 'aiEnabled', 'autoHide']) $(k).checked = !!settings[k];
+  for (const k of ['enabled', 'useLrclib', 'aiEnabled', 'autoHide', 'appHideTab']) $(k).checked = !!settings[k];
   for (const k of ['provider', 'baseUrl', 'apiKey', 'model', 'language']) $(k).value = settings[k] || '';
   $('transparency').value = settings.transparency;
   $('transparencyVal').textContent = `${settings.transparency}%`;
@@ -79,7 +79,7 @@ function msg(text, err = false) {
 }
 
 // Toggles save immediately
-for (const k of ['enabled', 'useLrclib', 'aiEnabled', 'autoHide']) {
+for (const k of ['enabled', 'useLrclib', 'aiEnabled', 'autoHide', 'appHideTab']) {
   $(k).addEventListener('change', () => saveSettings({ [k]: $(k).checked }));
 }
 
