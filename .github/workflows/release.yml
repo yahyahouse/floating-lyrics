@@ -1,0 +1,54 @@
+name: Release Mac app
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # Liquid Glass (glassEffect) needs the macOS 26 SDK
+    runs-on: macos-26
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Import signing certificate
+        env:
+          CERT_P12: ${{ secrets.SIGNING_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: |
+          if [ -z "$CERT_P12" ]; then
+            echo "::warning::SIGNING_CERT_P12 not set, using ad-hoc signing"
+            exit 0
+          fi
+          echo "$CERT_P12" | base64 --decode > cert.p12
+          openssl pkcs12 -in cert.p12 -passin env:CERT_PASSWORD -nokeys -out cert.pem
+          security create-keychain -p ci build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p ci build.keychain
+          security set-keychain-settings build.keychain
+          security import cert.p12 -k build.keychain -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ci build.keychain
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain cert.pem
+          rm -f cert.p12 cert.pem
+          echo "SIGN_ID=$(security find-identity -v -p codesigning build.keychain | head -1 | sed -E 's/.*"(.*)"/\1/')" >> "$GITHUB_ENV"
+
+      - name: Build DMG
+        run: macos-app/make-dmg.sh "${TAG#v}"
+
+      - name: Upload to release
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Floating Lyrics $TAG" --generate-notes
+          gh release upload "$TAG" macos-app/build/FloatingLyrics-*.dmg --clobber

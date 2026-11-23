@@ -100,6 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = LyricsModel()
     private let prefs = Prefs()
     private var server: LyricsServer!
+    private let updater = Updater()
     private var panel: LyricsPanel!
     private var statusItem: NSStatusItem!
     private var subs = Set<AnyCancellable>()
@@ -149,6 +150,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &subs)
 
         updateVisibility()
+
+        // Check for updates 10 seconds after launch, then every 6 hours
+        updater.onChange = { [weak self] in self?.rebuildMenu() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in self?.updater.check(manual: false) }
+        Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updater.check(manual: false) }
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -272,6 +280,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(item("Open at Login", #selector(toggleLogin), on: SMAppService.mainApp.status == .enabled, key: ""))
         menu.addItem(.separator())
+
+        let version = NSMenuItem(title: "Version \(updater.currentVersion)", action: nil, keyEquivalent: "")
+        version.isEnabled = false
+        menu.addItem(version)
+        if !updater.status.isEmpty {
+            let st = NSMenuItem(title: updater.status, action: nil, keyEquivalent: "")
+            st.isEnabled = false
+            menu.addItem(st)
+        }
+        menu.addItem(item("Check for Updates", #selector(checkForUpdates), on: false, key: ""))
+        menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Floating Lyrics", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
         statusItem.menu = menu
@@ -365,6 +384,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let raw = sender.representedObject as? String, let t = Theme(rawValue: raw) else { return }
         prefs.theme = t
     }
+
+    @objc private func checkForUpdates() { updater.check(manual: true) }
 
     @objc private func togglePlay() { model.togglePlay() }
 

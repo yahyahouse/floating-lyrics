@@ -56,6 +56,10 @@ The extension works on its own. The Mac app in `macos-app/` is an extra: a nativ
 • Menu bar icon: show/hide window, Current Line Only, Click-Through (clicks pass through the lyrics), Play / Pause, Open at Login
 • Drag the window by its top edge, resize from the edges. Click a line to jump to it. Text size and transparency follow the extension settings
 
+Auto-update: the app checks GitHub Releases 10 seconds after it opens and every 6 hours after that. When a newer version is out it downloads the DMG, replaces itself and relaunches. "Check for Updates" in the menu bar does it right away. The app must be in the Applications folder for this to work.
+
+Releasing a new version: bump `macos-app/VERSION`, then push a tag with the same number (`git tag v1.1.0 && git push origin v1.1.0`). GitHub Actions builds `FloatingLyrics-1.1.0.dmg` and attaches it to the release; installed apps pick it up through auto-update. Build a DMG locally with `macos-app/make-dmg.sh 1.1.0`. Optional repository secrets `SIGNING_CERT_P12` (base64 .p12) and `SIGNING_CERT_PASSWORD` sign the release with a fixed certificate; without them it is ad-hoc signed.
+
 How it works: the app listens on `ws://127.0.0.1:47321` (localhost only, Chrome extension origins only). The extension's service worker connects to it and mirrors what the overlay shows. If the app isn't running the connection simply fails and nothing changes.
 
 ## Notes
