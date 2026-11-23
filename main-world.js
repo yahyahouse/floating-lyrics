@@ -120,6 +120,32 @@
     };
   }
 
+  // Typing in the overlay's inputs (inside its shadow root) must not trigger YouTube Music
+  // hotkeys (space = pause, j/k/l, etc.). Registered on window capture at document_start so it
+  // runs before the page's own listeners. Default action (inserting the character) is untouched.
+  // The overlay's own key handlers (Enter/Esc/arrows) still get a non-composed copy of the event,
+  // which stays inside the shadow root so the page never sees it.
+  const overlayEditable = (e) => {
+    const path = e.composedPath?.() || [];
+    const t = path[0];
+    if (!t || !t.matches?.('input, textarea, [contenteditable=""], [contenteditable="true"]')) return null;
+    return path.some((n) => n.id === 'ytmfl-host') ? t : null;
+  };
+  for (const type of ['keydown', 'keyup', 'keypress']) {
+    window.addEventListener(type, (e) => {
+      const t = overlayEditable(e);
+      if (!t) return;
+      e.stopImmediatePropagation();
+      const copy = new KeyboardEvent(type, {
+        key: e.key, code: e.code, location: e.location, repeat: e.repeat, isComposing: e.isComposing,
+        ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey,
+        bubbles: true, cancelable: true, composed: false
+      });
+      t.dispatchEvent(copy);
+      if (copy.defaultPrevented) e.preventDefault();
+    }, true);
+  }
+
   window.addEventListener('message', async (e) => {
     if (e.source !== window || !e.data || e.data.__ytmfl !== 'req') return;
     const { id, action, payload } = e.data;
