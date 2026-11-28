@@ -15,10 +15,28 @@ Floating lyrics synced with the song playing on YouTube Music. When lyrics are m
 
 ## Installation
 
-• Open `chrome://extensions`
-• Enable Developer mode
-• Click Load unpacked and pick this folder
-• Open music.youtube.com and play a song
+### Chrome extension
+
+1. Get the code: `git clone https://github.com/yahyahouse/floating-lyrics.git`, or on GitHub click Code → Download ZIP and unzip it
+2. Open `chrome://extensions`
+3. Turn on Developer mode (top right)
+4. Click Load unpacked and pick the `floating-lyrics` folder
+5. Open music.youtube.com and play a song. Lyrics appear in a floating card on the page
+
+To update the extension: `git pull` (or download the ZIP again), then click the ↻ reload button on the extension card in `chrome://extensions` and refresh the YouTube Music tab.
+
+### macOS app (optional)
+
+1. Download `FloatingLyrics-x.y.z.dmg` from the latest [release](https://github.com/yahyahouse/floating-lyrics/releases/latest)
+2. Open the DMG and drag Floating Lyrics into Applications
+3. The app isn't notarized by Apple, so macOS blocks the first launch. Allow it once with:
+   ```sh
+   xattr -dr com.apple.quarantine "/Applications/Floating Lyrics.app"
+   ```
+   Or open it, then go to System Settings → Privacy & Security and click Open Anyway
+4. Open Floating Lyrics (it lives in the menu bar, no Dock icon), make sure the Chrome extension is installed, and play a song on music.youtube.com
+
+After that the app updates itself (see below). Keep it in Applications, or auto-update won't work.
 
 ## AI setup
 
@@ -49,7 +67,7 @@ For local Whisper on a Mac, use a server that exposes `/v1/audio/transcriptions`
 
 The extension works on its own. The Mac app in `macos-app/` is an extra: a native floating lyrics window that stays above every app, on every Space and over full-screen apps, with a menu bar icon.
 
-• Build: `cd macos-app && ./build.sh --install` (needs Xcode command line tools) → `/Applications/Floating Lyrics.app`
+• Install: see [Installation](#macos-app-optional) above. Build from source instead: `cd macos-app && ./build.sh --install` (needs Xcode command line tools) → `/Applications/Floating Lyrics.app`
 • Open the app, then play a song on music.youtube.com. The extension connects to it within a few seconds
 • While the app is open the in-tab overlay hides (turn off "Hide tab overlay while the Mac app is open" in the popup to keep both). Quit the app → the in-tab overlay comes back
 • Player card: artist & title, scrolling lyrics (the sung line bright, the rest faded), progress bar with time, and ⏮ / Play-Pause / ⏭ buttons that control YouTube Music. Make the window shorter and the controls, then the progress bar, step aside

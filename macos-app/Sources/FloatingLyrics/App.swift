@@ -38,9 +38,41 @@ final class LyricsPanel: NSPanel {
 
     // Drag anywhere to move: a press that travels more than a few points moves the window instead
     // of reaching the lyrics/buttons; a plain click still works as usual.
+    // A press near an edge resizes from that edge instead.
     private var dragStart: NSPoint?
     private var dragOrigin = NSPoint.zero
     private var dragging = false
+    private var resizeEdges: ResizeEdges?
+    private var resizeStart = NSRect.zero
+
+    private struct ResizeEdges {
+        var left = false, right = false, top = false, bottom = false
+    }
+
+    private static let edgeZone: CGFloat = 8
+
+    private func edges(at p: NSPoint) -> ResizeEdges? {
+        let z = Self.edgeZone
+        let e = ResizeEdges(left: p.x < z, right: p.x > frame.width - z,
+                            top: p.y > frame.height - z, bottom: p.y < z)
+        return e.left || e.right || e.top || e.bottom ? e : nil
+    }
+
+    private func resize(_ e: ResizeEdges, dx: CGFloat, dy: CGFloat) {
+        let s = resizeStart
+        var f = s
+        if e.right { f.size.width = max(minSize.width, s.width + dx) }
+        if e.left {
+            f.size.width = max(minSize.width, s.width - dx)
+            f.origin.x = s.maxX - f.width
+        }
+        if e.top { f.size.height = max(minSize.height, s.height + dy) }
+        if e.bottom {
+            f.size.height = max(minSize.height, s.height - dy)
+            f.origin.y = s.maxY - f.height
+        }
+        setFrame(f, display: true)
+    }
 
     override func sendEvent(_ event: NSEvent) {
         switch event.type {
@@ -48,10 +80,17 @@ final class LyricsPanel: NSPanel {
             dragStart = NSEvent.mouseLocation
             dragOrigin = frame.origin
             dragging = false
+            resizeEdges = edges(at: event.locationInWindow)
+            resizeStart = frame
+            if resizeEdges != nil { return }
         case .leftMouseDragged:
             if let start = dragStart {
                 let p = NSEvent.mouseLocation
                 let dx = p.x - start.x, dy = p.y - start.y
+                if let e = resizeEdges {
+                    resize(e, dx: dx, dy: dy)
+                    return
+                }
                 if !dragging && hypot(dx, dy) > 4 { dragging = true }
                 if dragging {
                     var f = frame
@@ -62,8 +101,11 @@ final class LyricsPanel: NSPanel {
             }
         case .leftMouseUp:
             let wasDragging = dragging
+            let wasResizing = resizeEdges != nil
             dragStart = nil
             dragging = false
+            resizeEdges = nil
+            if wasResizing { return }
             if wasDragging {
                 // Release far outside the window so the pressed button / line doesn't fire
                 if let cancel = NSEvent.mouseEvent(
