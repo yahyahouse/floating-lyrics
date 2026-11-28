@@ -172,6 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @AppStorage("expandedHeight") private var expandedHeight: Double = 520
+    @AppStorage("compactHeight") private var compactHeight: Double = 60
     private var lastCompact = false
     private var ghostKey: HotKey?
     private var hideKey: HotKey?
@@ -228,8 +229,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let top = f.maxY
         if compact {
             expandedHeight = f.height
-            f.size.height = 60
+            f.size.height = max(44, compactHeight)
         } else {
+            compactHeight = f.height
             f.size.height = max(260, expandedHeight)
         }
         f.origin.y = top - f.height

@@ -392,10 +392,19 @@ private struct CompactLine: View {
     @ObservedObject var model: LyricsModel
     var ghost = false
 
+    /// Window height the base font size is designed for; taller windows scale the text up.
+    static let baseHeight: CGFloat = 60
+
     var body: some View {
+        GeometryReader { g in
+            line(scale: max(1, g.size.height / Self.baseHeight))
+        }
+    }
+
+    private func line(scale: CGFloat) -> some View {
         ZStack {
             Text(text)
-                .font(.system(size: model.fontSize + 4, weight: .bold))
+                .font(.system(size: (model.fontSize + 4) * scale, weight: .bold))
                 .foregroundStyle(.white.opacity(dim ? 0.5 : 1))
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
