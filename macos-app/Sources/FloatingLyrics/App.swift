@@ -153,7 +153,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         server.start()
 
         panel = LyricsPanel()
-        let host = NSHostingView(rootView: LyricsView(model: model, prefs: prefs, onHide: { [weak self] in self?.setUserHidden(true) }))
+        let host = NSHostingView(rootView: LyricsView(model: model, prefs: prefs,
+                                                  onHide: { [weak self] in self?.setUserHidden(true) },
+                                                  onSearch: { [weak self] in self?.openSearch() }))
         host.wantsLayer = true
         panel.contentView = host
         applyGhost()
@@ -327,6 +329,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let ghost = item("Ghost Mode (click-through, transparent)", #selector(toggleClickThrough), on: prefs.clickThrough, key: "l")
         ghost.keyEquivalentModifierMask = [.command, .option]
         menu.addItem(ghost)
+        let find = item("Search Lyrics…", #selector(openSearch), on: false, key: "f")
+        find.isEnabled = model.connected
+        menu.addItem(find)
         let play = item("Play / Pause", #selector(togglePlay), on: false, key: "p")
         play.isEnabled = model.connected
         menu.addItem(play)
@@ -447,6 +452,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func checkForUpdates() { updater.check(manual: true) }
 
     @objc private func togglePlay() { model.togglePlay() }
+
+    // MARK: Lyrics search
+
+    private var searchWindow: NSWindow?
+
+    /// Wrong or missing lyrics? Search LRCLIB and pick the right result (like 🔍 in the extension).
+    @objc func openSearch() {
+        guard model.connected else { NSSound.beep(); return }
+        let w = searchWindow ?? {
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 440),
+                             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+            w.title = "Search Lyrics"
+            w.isReleasedWhenClosed = false
+            w.level = .statusBar // the lyrics window sits at this level too; keep the search on top
+            w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            w.setFrameAutosaveName("SearchWindow")
+            if !w.setFrameUsingName("SearchWindow") { w.center() }
+            searchWindow = w
+            return w
+        }()
+        // Fresh view each time: the fields start from the song playing now
+        w.contentView = NSHostingView(rootView: SearchView(model: model, onDone: { [weak w] in w?.close() }))
+        NSApp.activate()
+        w.makeKeyAndOrderFront(nil)
+    }
 
     @objc private func toggleLogin() {
         do {

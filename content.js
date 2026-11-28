@@ -1670,6 +1670,10 @@ button { all: unset; cursor: pointer; }
           const v = getVideo();
           if (btn) btn.click();
           else if (v) v.paused ? v.play() : v.pause();
+        } else if (msg.cmd === 'pick') {
+          // Lyrics picked in the app's search window (null = back to the original)
+          finderVid = track?.videoId ?? null;
+          saveSearch(msg.pick || null);
         } else if (msg.cmd === 'next' || msg.cmd === 'prev') {
           document.querySelector(`ytmusic-player-bar .${msg.cmd === 'next' ? 'next' : 'previous'}-button`)?.click();
         }
@@ -1691,7 +1695,9 @@ button { all: unset; cursor: pointer; }
   const appState = {
     title: '', artist: '', badge: '', lines: [], active: -1, state: null,
     font: DEFAULTS.fontSize, transparency: DEFAULTS.transparency, visible: true, paused: true,
-    time: 0, duration: 0
+    time: 0, duration: 0,
+    // For the app's lyrics search: the track as YT Music shows it, and the LRCLIB pick in use
+    origTitle: '', origArtist: '', custom: false, findId: null
   };
 
   function onPlayState() {
@@ -1740,6 +1746,10 @@ button { all: unset; cursor: pointer; }
     wrap('setTrack', (t, custom = null) => {
       appState.title = custom?.title || t?.title || '';
       appState.artist = custom ? custom.artist || '' : t?.artist || '';
+      appState.origTitle = t?.title || '';
+      appState.origArtist = t?.artist || '';
+      appState.custom = !!custom;
+      appState.findId = custom?.id ?? null;
     });
     wrap('setLines', (lines) => {
       appState.lines = lines.map((l) => l.text);

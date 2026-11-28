@@ -106,6 +106,8 @@ final class LyricsServer {
         if msg.type == "state" {
             model.receivedAt = Date()
             if model.state != msg.state { model.state = msg.state }
+        } else if msg.type == "search" {
+            model.receiveSearch(msg)
         }
     }
 

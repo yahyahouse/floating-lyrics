@@ -80,6 +80,8 @@ struct LyricsView: View {
     @ObservedObject var prefs: Prefs
     /// Tuck the window away into the menu bar icon
     var onHide: () -> Void = {}
+    /// Open the lyrics search window
+    var onSearch: () -> Void = {}
 
     var body: some View {
         GeometryReader { g in
@@ -129,7 +131,8 @@ struct LyricsView: View {
                    onTheme: { prefs.nextTheme() },
                    onGhost: { prefs.clickThrough = true },
                    onMinimize: { prefs.compact = true },
-                   onHide: onHide)
+                   onHide: onHide,
+                   onSearch: onSearch)
                 .padding(.top, 26)
 
             LyricsBody(model: model, fontSize: prefs.fontSize, shadow: shadow)
@@ -166,6 +169,7 @@ private struct Header: View {
     var onGhost: () -> Void
     var onMinimize: () -> Void
     var onHide: () -> Void
+    var onSearch: () -> Void
 
     var body: some View {
         HStack(alignment: .center) {
@@ -179,11 +183,17 @@ private struct Header: View {
             }
             .lineLimit(1)
             .shadow(color: .black.opacity(shadow), radius: 3)
+            .contentShape(Rectangle())
+            .onTapGesture { if model.connected { onSearch() } }
+            .help(model.connected ? "Wrong or missing lyrics? Click to search by song title" : "")
             Spacer(minLength: 12)
             Waveform(playing: model.connected && !model.paused, bars: 14, height: 26)
                 .shadow(color: .black.opacity(shadow), radius: 3)
             if !ghost {
                 HStack(spacing: 6) {
+                    if model.connected {
+                        WindowButton(symbol: "magnifyingglass", help: "Wrong or missing lyrics? Search by song title (⌘F in the menu bar)", action: onSearch)
+                    }
                     WindowButton(symbol: "circle.lefthalf.filled", help: "Theme: \(theme.title) — click to switch", action: onTheme)
                     WindowButton(symbol: "hand.raised.slash", help: "Ghost mode: click-through & transparent (⌥⌘L)", action: onGhost)
                     WindowButton(symbol: "minus", help: "Minimize to the current line", action: onMinimize)

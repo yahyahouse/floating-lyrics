@@ -71,6 +71,7 @@ The extension works on its own. The Mac app in `macos-app/` is an extra: a nativ
 • Open the app, then play a song on music.youtube.com. The extension connects to it within a few seconds
 • While the app is open the in-tab overlay hides (turn off "Hide tab overlay while the Mac app is open" in the popup to keep both). Quit the app → the in-tab overlay comes back
 • Player card: artist & title, scrolling lyrics (the sung line bright, the rest faded), progress bar with time, and ⏮ / Play-Pause / ⏭ buttons that control YouTube Music. Make the window shorter and the controls, then the progress bar, step aside
+• Search lyrics: 🔍 button in the header, click the song title, or menu bar icon → Search Lyrics… (⌘F). Same as 🔍 in the overlay: search LRCLIB by title & artist, pick a result (Synced / Text only / Same length / In use), "Use original" goes back. The pick is saved per song by the extension
 • Menu bar icon: show/hide window, Current Line Only, Click-Through (clicks pass through the lyrics), Play / Pause, Open at Login
 • Drag the window by its top edge, resize from the edges. Click a line to jump to it. Text size is set from the menu bar icon → Text Size and stays the same when the window is resized; transparency follows the extension settings
 

@@ -228,7 +228,14 @@ function appConnect() {
   ws.onmessage = (e) => {
     let m;
     try { m = JSON.parse(e.data); } catch { return; }
-    if (m?.type === 'cmd' && appTab != null) notifyTab(appTab, { type: 'app:cmd', cmd: m.cmd, i: m.i });
+    if (m?.type !== 'cmd') return;
+    // Lyrics search from the app: answered here, the picked result goes to the tab like other commands
+    if (m.cmd === 'search') {
+      lrclibSearch({ title: m.title, artist: m.artist, duration: appState?.duration })
+        .then((r) => appSend({ type: 'search', req: m.req, ...r }));
+    } else if (appTab != null) {
+      notifyTab(appTab, { type: 'app:cmd', cmd: m.cmd, i: m.i, pick: m.pick });
+    }
   };
 }
 
