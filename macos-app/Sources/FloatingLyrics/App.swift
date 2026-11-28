@@ -315,6 +315,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         themeItem.submenu = themeMenu
         menu.addItem(themeItem)
+        let sizeItem = NSMenuItem(title: "Text Size", action: nil, keyEquivalent: "")
+        let sizeMenu = NSMenu()
+        for s in Prefs.fontSizes {
+            let i = item("\(Int(s)) pt", #selector(pickFontSize(_:)), on: prefs.fontSize == s, key: "")
+            i.representedObject = s
+            sizeMenu.addItem(i)
+        }
+        sizeItem.submenu = sizeMenu
+        menu.addItem(sizeItem)
         let ghost = item("Ghost Mode (click-through, transparent)", #selector(toggleClickThrough), on: prefs.clickThrough, key: "l")
         ghost.keyEquivalentModifierMask = [.command, .option]
         menu.addItem(ghost)
@@ -427,6 +436,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func pickTheme(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let t = Theme(rawValue: raw) else { return }
         prefs.theme = t
+    }
+
+    @objc private func pickFontSize(_ sender: NSMenuItem) {
+        guard let s = sender.representedObject as? Double else { return }
+        prefs.fontSize = s
+        rebuildMenu()
     }
 
     @objc private func checkForUpdates() { updater.check(manual: true) }

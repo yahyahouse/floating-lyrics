@@ -72,7 +72,7 @@ The extension works on its own. The Mac app in `macos-app/` is an extra: a nativ
 • While the app is open the in-tab overlay hides (turn off "Hide tab overlay while the Mac app is open" in the popup to keep both). Quit the app → the in-tab overlay comes back
 • Player card: artist & title, scrolling lyrics (the sung line bright, the rest faded), progress bar with time, and ⏮ / Play-Pause / ⏭ buttons that control YouTube Music. Make the window shorter and the controls, then the progress bar, step aside
 • Menu bar icon: show/hide window, Current Line Only, Click-Through (clicks pass through the lyrics), Play / Pause, Open at Login
-• Drag the window by its top edge, resize from the edges. Click a line to jump to it. Text size and transparency follow the extension settings
+• Drag the window by its top edge, resize from the edges. Click a line to jump to it. Text size is set from the menu bar icon → Text Size and stays the same when the window is resized; transparency follows the extension settings
 
 Auto-update: the app checks GitHub Releases 10 seconds after it opens and every 6 hours after that. When a newer version is out it downloads the DMG, replaces itself and relaunches. "Check for Updates" in the menu bar does it right away. The app must be in the Applications folder for this to work.
 

@@ -45,7 +45,6 @@ final class LyricsModel: ObservableObject {
     var paused: Bool { state?.paused ?? true }
     var hasLyrics: Bool { connected && state?.state == nil && !lines.isEmpty }
     func line(_ i: Int) -> String? { i >= 0 && i < lines.count ? lines[i] : nil }
-    var fontSize: Double { min(48, max(12, state?.font ?? 18)) }
     /// 0 = solid background, 100 = fully see-through (same as the extension slider)
     var backgroundOpacity: Double {
         let pct = min(100, max(0, state?.transparency ?? 22))

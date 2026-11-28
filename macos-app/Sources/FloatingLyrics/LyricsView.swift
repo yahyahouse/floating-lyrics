@@ -6,6 +6,9 @@ final class Prefs: ObservableObject {
     @AppStorage("compact") var compact = false
     @AppStorage("clickThrough") var clickThrough = false
     @AppStorage("theme") var themeRaw = Theme.dark.rawValue
+    @AppStorage("fontSize") var fontSize: Double = 18
+
+    static let fontSizes: [Double] = [14, 16, 18, 20, 24, 28, 32, 40]
 
     var theme: Theme {
         get { Theme(rawValue: themeRaw) ?? .dark }
@@ -86,7 +89,7 @@ struct LyricsView: View {
                 ThemeBackground(theme: look, opacity: model.backgroundOpacity)
 
                 if prefs.compact {
-                    CompactLine(model: model, ghost: ghost)
+                    CompactLine(model: model, fontSize: prefs.fontSize, ghost: ghost)
                     if !ghost {
                         HStack(spacing: 6) {
                             Spacer()
@@ -129,7 +132,7 @@ struct LyricsView: View {
                    onHide: onHide)
                 .padding(.top, 26)
 
-            LyricsBody(model: model, shadow: shadow)
+            LyricsBody(model: model, fontSize: prefs.fontSize, shadow: shadow)
                 .padding(.top, 6)
 
             if showProgress && model.connected {
@@ -197,6 +200,7 @@ private struct Header: View {
 
 private struct LyricsBody: View {
     @ObservedObject var model: LyricsModel
+    var fontSize: Double
     var shadow: Double
 
     var body: some View {
@@ -209,7 +213,7 @@ private struct LyricsBody: View {
             } else if model.lines.isEmpty {
                 message("Play a song to show lyrics", sub: nil)
             } else {
-                LyricsScroller(model: model, shadow: shadow)
+                LyricsScroller(model: model, fontSize: fontSize, shadow: shadow)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -239,6 +243,7 @@ private struct LyricsBody: View {
 
 private struct LyricsScroller: View {
     @ObservedObject var model: LyricsModel
+    var fontSize: Double
     var shadow: Double
 
     var body: some View {
@@ -250,7 +255,7 @@ private struct LyricsScroller: View {
                         ForEach(Array(model.lines.enumerated()), id: \.offset) { i, text in
                             let on = i == model.active
                             Text(text)
-                                .font(.system(size: model.fontSize + 2, weight: .semibold))
+                                .font(.system(size: fontSize + 2, weight: .semibold))
                                 .foregroundStyle(.white.opacity(on ? 1 : i < model.active ? 0.28 : 0.4))
                                 .scaleEffect(on ? 1 : 0.96, anchor: .leading)
                                 .blur(radius: on ? 0 : 0.4)
@@ -390,21 +395,13 @@ private struct PressStyle: ButtonStyle {
 /// Only the line being sung (or the first line, dimmed, before the song starts).
 private struct CompactLine: View {
     @ObservedObject var model: LyricsModel
+    var fontSize: Double
     var ghost = false
 
-    /// Window height the base font size is designed for; taller windows scale the text up.
-    static let baseHeight: CGFloat = 60
-
     var body: some View {
-        GeometryReader { g in
-            line(scale: max(1, g.size.height / Self.baseHeight))
-        }
-    }
-
-    private func line(scale: CGFloat) -> some View {
         ZStack {
             Text(text)
-                .font(.system(size: (model.fontSize + 4) * scale, weight: .bold))
+                .font(.system(size: fontSize + 4, weight: .bold))
                 .foregroundStyle(.white.opacity(dim ? 0.5 : 1))
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
